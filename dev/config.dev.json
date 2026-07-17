@@ -1,0 +1,11 @@
+{
+  "dataDir": "./data",
+  "logLevel": "debug",
+  "couchdb": {
+    "adminUrl": "http://localhost:5984",
+    "adminUser": "admin",
+    "adminPassword": "admin",
+    "publicUrl": "http://localhost:5984"
+  },
+  "publicBaseUrl": "http://localhost:5173"
+}

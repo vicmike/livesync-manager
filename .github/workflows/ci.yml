@@ -1,0 +1,65 @@
+# GitHub mirror of .forgejo/workflows/ci.yml. Not a symlink: GitHub Actions
+# ignores symlinked workflow files, and this variant differs anyway: the
+# integration job runs against a throwaway CouchDB service container instead
+# of repository secrets, so it works on forks and needs no setup. Since the
+# container is disposable, the config-mutation tests run here too.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  integration:
+    runs-on: ubuntu-24.04
+    services:
+      couchdb:
+        image: couchdb:3
+        env:
+          COUCHDB_USER: admin
+          COUCHDB_PASSWORD: integration-only
+        ports:
+          - 5984:5984
+        options: >-
+          --health-cmd "curl -sf http://localhost:5984/_up"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      COUCHDB_TEST_URL: http://localhost:5984
+      COUCHDB_TEST_USER: admin
+      COUCHDB_TEST_PASSWORD: integration-only
+      COUCHDB_TEST_ALLOW_CONFIG_MUTATION: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run test:integration
+
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Internal doc references resolve
+        run: |
+          rc=0
+          for f in $(grep -rhoE '`(docs/[A-Za-z_]+\.md|reference/[A-Za-z_.]+|[A-Z]+\.md)`' --include='*.md' docs *.md | tr -d '\140' | sort -u); do
+            [ -e "$f" ] || [ -e "docs/$f" ] || { echo "missing: $f"; rc=1; }
+          done
+          exit $rc

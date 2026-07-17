@@ -1,0 +1,82 @@
+# LiveSync Manager + CouchDB. Quickstart:
+#
+#   cp .env.example .env   # then edit it
+#   docker compose up -d
+#   open http://localhost:8080 and complete first-boot setup
+#
+# Already running CouchDB elsewhere? Delete the couchdb service and the
+# app's depends_on, and point COUCHDB_ADMIN_URL at your server.
+#
+# TLS: invite pages refuse plain HTTP except on localhost, so production
+# needs a reverse proxy. Bring your own, or use the bundled Caddy:
+#   docker compose --profile proxy up -d     (set the *_DOMAIN vars in .env)
+
+name: livesync-manager
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      # Loopback only: external traffic belongs behind the TLS proxy.
+      - '127.0.0.1:8080:8080'
+    environment:
+      COUCHDB_ADMIN_URL: http://couchdb:5984
+      COUCHDB_ADMIN_USER: ${COUCHDB_USER:?set COUCHDB_USER in .env}
+      COUCHDB_ADMIN_PASSWORD: ${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+      COUCHDB_PUBLIC_URL: ${COUCHDB_PUBLIC_URL:?the https URL devices sync against}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?the app's own external URL}
+      TRUST_PROXY: 'true'
+    volumes:
+      # SQLite + master key. Back this volume up as a unit (docs/DEPLOYMENT.md).
+      - app-data:/data
+    depends_on:
+      couchdb:
+        condition: service_healthy
+
+  couchdb:
+    image: couchdb:3
+    restart: unless-stopped
+    ports:
+      # Loopback only, for a host-level reverse proxy. Devices need an
+      # https URL to CouchDB, and this is what that proxy forwards to.
+      # (The bundled Caddy profile reaches couchdb:5984 directly instead.)
+      - '127.0.0.1:5984:5984'
+    environment:
+      COUCHDB_USER: ${COUCHDB_USER:?}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?}
+    volumes:
+      - couchdb-data:/opt/couchdb/data
+      # Persisting local.d means the app's one-click configuration
+      # fixes survive CouchDB restarts.
+      - couchdb-config:/opt/couchdb/etc/local.d
+    healthcheck:
+      # Authenticated: once the app applies require_valid_user (part of
+      # the recommended configuration), an anonymous _up returns 401.
+      test:
+        ['CMD-SHELL', 'curl -sf -u "$$COUCHDB_USER:$$COUCHDB_PASSWORD" http://localhost:5984/_up']
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  caddy:
+    profiles: ['proxy']
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      # Required when this profile runs; defaulted so a plain `up` works
+      # without them (compose interpolates even inactive profiles).
+      MANAGER_DOMAIN: ${MANAGER_DOMAIN:-}
+      COUCHDB_DOMAIN: ${COUCHDB_DOMAIN:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  app-data:
+  couchdb-data:
+  couchdb-config:
+  caddy-data:

@@ -1,0 +1,14 @@
+.git/
+.claude/
+.forgejo/
+node_modules/
+web/node_modules/
+dist/
+web/dist/
+docs/
+reference/
+dev/
+data/
+*.md
+.env
+.env.*

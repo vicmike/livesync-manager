@@ -1,0 +1,60 @@
+{
+  "name": "livesync-manager",
+  "version": "0.3.1",
+  "private": true,
+  "description": "Self-hosted management app for Obsidian Self-hosted LiveSync + CouchDB",
+  "license": "MIT",
+  "author": "Mike Wood (https://github.com/vicmike)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vicmike/livesync-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vicmike/livesync-manager/issues"
+  },
+  "homepage": "https://github.com/vicmike/livesync-manager#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"CONFIG_FILE=dev/config.dev.json tsx watch src/index.ts\" \"npm run dev -w web\"",
+    "build": "tsc -p tsconfig.build.json && npm run build -w web",
+    "start": "node dist/index.js",
+    "reset-admin": "node dist/scripts/resetAdmin.js",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.0.2",
+    "@fastify/helmet": "13.0.2",
+    "@fastify/static": "9.1.3",
+    "argon2": "0.44.0",
+    "better-sqlite3": "12.11.1",
+    "fastify": "5.10.0",
+    "octagonal-wheels": "0.1.47",
+    "qrcode": "1.5.4",
+    "uuid": "14.0.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "26.1.0",
+    "@types/qrcode": "1.5.6",
+    "concurrently": "10.0.3",
+    "eslint": "10.6.0",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.4",
+    "tsx": "4.23.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.63.0",
+    "vitest": "4.1.10"
+  }
+}

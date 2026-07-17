@@ -1,0 +1,15 @@
+# Throwaway CouchDB for integration tests (npm run test:integration).
+# Data is ephemeral by design; never point this at real vaults.
+services:
+  couchdb:
+    image: couchdb:3
+    ports:
+      - '5984:5984'
+    environment:
+      COUCHDB_USER: admin
+      COUCHDB_PASSWORD: admin
+    healthcheck:
+      test: ['CMD', 'curl', '-sf', 'http://localhost:5984/_up']
+      interval: 5s
+      timeout: 3s
+      retries: 12

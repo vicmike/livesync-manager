@@ -1,0 +1,10 @@
+# Used by the compose "proxy" profile. Caddy obtains certificates
+# automatically as long as both hostnames resolve to this machine.
+
+{$MANAGER_DOMAIN} {
+	reverse_proxy app:8080
+}
+
+{$COUCHDB_DOMAIN} {
+	reverse_proxy couchdb:5984
+}

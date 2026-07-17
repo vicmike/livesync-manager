@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Image build + push joins these jobs once the registry is chosen
+# (docs/MILESTONES.md, dogfood checkpoint).
+jobs:
+  checks:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  # The integration job targets an existing CouchDB with throwaway lsc-int-*
+  # databases (cleaned up by the tests). Configure repository secrets
+  # COUCHDB_TEST_URL / COUCHDB_TEST_USER / COUCHDB_TEST_PASSWORD; the job
+  # skips itself when they are absent (e.g. on forks). Config-mutation tests
+  # stay off here; they only run locally against a disposable instance.
+  integration:
+    runs-on: ubuntu-22.04
+    env:
+      COUCHDB_TEST_URL: ${{ secrets.COUCHDB_TEST_URL }}
+      COUCHDB_TEST_USER: ${{ secrets.COUCHDB_TEST_USER }}
+      COUCHDB_TEST_PASSWORD: ${{ secrets.COUCHDB_TEST_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integration tests (throwaway databases)
+        run: |
+          if [ -z "$COUCHDB_TEST_URL" ]; then
+            echo "COUCHDB_TEST_URL secret not set, skipping integration tests"
+            exit 0
+          fi
+          npm ci
+          npm run test:integration
+
+  docs:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Internal doc references resolve
+        run: |
+          rc=0
+          for f in $(grep -rhoE '`(docs/[A-Za-z_]+\.md|reference/[A-Za-z_.]+|[A-Z]+\.md)`' --include='*.md' docs *.md | tr -d '\140' | sort -u); do
+            [ -e "$f" ] || [ -e "docs/$f" ] || { echo "missing: $f"; rc=1; }
+          done
+          exit $rc
