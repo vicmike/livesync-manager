@@ -18,7 +18,7 @@ const PAGE_STYLE = `
   .passphrase { font-size: 1.6rem; font-family: ui-monospace, monospace; border: 1px solid #888; border-radius: 8px; padding: 0.75rem 1rem; text-align: center; margin: 1rem 0; user-select: all; }
   .qr { max-width: 16rem; margin: 1rem auto; display: block; }
   .button { display: inline-block; padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid #555; background: #f0f0f0; color: #111; text-decoration: none; font-size: 1rem; cursor: pointer; }
-  ol li { margin: 0.4rem 0; }
+  ol li, ul li { margin: 0.4rem 0; }
   footer { margin-top: 2rem; font-size: 0.85rem; color: #666; }
 `;
 
@@ -55,9 +55,22 @@ function renderInvitePage(invite: InvitePage, qrSvg: string, consumePath: string
 with it and open the copied link.</li>
 <li>When the plugin asks, choose <em>Use the copied setup URI</em> and enter the
 invite passphrase shown below.</li>
-<li>Choose <em>Set it up as secondary or subsequent device</em> and let the vault
-download.</li>
+<li>For <em>How would you like to set it up?</em>, choose
+<em>Set it up as secondary or subsequent device</em>.</li>
 </ol>
+<p>The plugin then walks through a few confirmations. Because the vault on this
+device is empty, it is safe to accept them:</p>
+<ul>
+<li><em>Importing LiveSync's conf?</em> Answer yes.</li>
+<li>Any <em>overwrite?</em> prompt: yes.</li>
+<li><em>Fetch remote config failed</em>: choose <em>Skip and Proceed</em>. This is
+normal for a brand-new vault, not an error.</li>
+<li><em>Config Doctor</em> suggestions: choose no, so the settings from this link
+are kept.</li>
+<li>Hidden-file sync and other optional features: your choice, and you can
+change them later in the plugin's settings.</li>
+</ul>
+<p>Then let the vault finish downloading.</p>
 <p style="text-align:center"><a class="button" href="${invite.setupUri}">Set up this device</a></p>
 ${qrSvg.replace('<svg', '<svg class="qr"')}
 <p>Invite passphrase (needed once, on the device):</p>

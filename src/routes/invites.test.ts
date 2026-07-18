@@ -33,6 +33,8 @@ describe('invite page', () => {
     expect(res.body).toContain('obsidian://setuplivesync?settings=');
     expect(res.body).toContain('<svg');
     expect(res.body).toContain(invite.uriPassphrase);
+    // Confirmation-dialog guidance: the non-obvious "not an error" answer.
+    expect(res.body).toContain('Skip and Proceed');
     await server.close();
   });
 
