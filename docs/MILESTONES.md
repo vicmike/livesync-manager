@@ -10,8 +10,9 @@ Repo layout per ARCHITECTURE.md; TypeScript strict; Fastify hello-world;
 Vite/React shell; eslint/prettier; vitest; `dev/couchdb.yml` docker-compose
 for integration tests; multi-stage Dockerfile (non-root, `/data` volume,
 honoring the DEPLOYMENT.md runtime contract); CI (lint + test + build).
-CI image build + push joins at the dogfood checkpoint with the registry
-choice. Update CLAUDE.md commands section.
+CI image build + push joined at the dogfood checkpoint: the `image` job in
+`.forgejo/workflows/ci.yml` triggers the in-cluster kaniko CronJob and rolls
+out the console. Update CLAUDE.md commands section.
 
 ## M1: Config, master key, SQLite
 Config loading (env + file); master key generate/load; `src/crypto`

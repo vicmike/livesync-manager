@@ -4,9 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
-# Image build + push joins these jobs once the registry is chosen
-# (docs/MILESTONES.md, dogfood checkpoint).
 jobs:
   checks:
     runs-on: ubuntu-22.04
@@ -51,3 +50,111 @@ jobs:
             [ -e "$f" ] || [ -e "docs/$f" ] || { echo "missing: $f"; rc=1; }
           done
           exit $rc
+
+  # Image build + dogfood rollout. The workflow does not run kaniko itself:
+  # it kubectl-creates a one-shot Job from the in-cluster CronJob
+  # `livesync-console-build` (ns `livesync-console`), which keeps the kaniko
+  # args, clone credentials, and registry details in the cluster's GitOps
+  # repo as the single source of truth. The CronJob builds refs/heads/main
+  # HEAD regardless of what triggered it, so this job runs only on main
+  # pushes / manual dispatch, never on PRs. Pushes `livesync-console:main` +
+  # `:main-<sha>` to the cluster registry, then rollout-restarts the console
+  # (Recreate strategy: a few seconds of downtime per push). Needs a
+  # namespace-scoped kubeconfig in the `KUBECONFIG` repo secret (create job /
+  # get cronjob / pods/log / patch deployment on this namespace only).
+  image:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install kubectl
+        run: |
+          set -eu
+          curl -fsSL -o /usr/local/bin/kubectl \
+            https://dl.k8s.io/release/v1.30.5/bin/linux/amd64/kubectl
+          chmod +x /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          set -eu
+          if [ "${#KUBECONFIG_DATA}" -lt 100 ]; then
+            echo "FATAL: KUBECONFIG secret appears unset or truncated (length ${#KUBECONFIG_DATA})"
+            exit 1
+          fi
+          mkdir -p ~/.kube
+          printf '%s' "$KUBECONFIG_DATA" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          kubectl -n livesync-console get cronjob livesync-console-build
+
+      - name: Trigger image build
+        id: trigger
+        run: |
+          set -eu
+          # Short hash + epoch keeps the Job name unique across reruns and
+          # under the 63-char K8s name limit.
+          NAME="livesync-console-build-${GITHUB_SHA:0:7}-$(date +%s)"
+          echo "job_name=$NAME" >> "$GITHUB_OUTPUT"
+          kubectl -n livesync-console create job \
+            --from=cronjob/livesync-console-build "$NAME"
+
+      - name: Wait for build to finish
+        run: |
+          set -eu
+          NAME="${{ steps.trigger.outputs.job_name }}"
+          # Race `complete` against `failed` so a fast-failing job is
+          # reported in seconds rather than burning the full timeout.
+          kubectl -n livesync-console wait --for=condition=complete \
+            --timeout=600s "job/$NAME" >/tmp/ok.log 2>&1 &
+          OK_PID=$!
+          kubectl -n livesync-console wait --for=condition=failed \
+            --timeout=600s "job/$NAME" >/tmp/fail.log 2>&1 &
+          FAIL_PID=$!
+          set +e
+          wait -n "$OK_PID" "$FAIL_PID"
+          FIRST_RC=$?
+          kill "$OK_PID" "$FAIL_PID" 2>/dev/null || true
+          wait 2>/dev/null || true
+          set -e
+          if [ "$FIRST_RC" -ne 0 ]; then
+            echo "Build did not complete cleanly (first-finish exit=$FIRST_RC). Recent log:"
+            kubectl -n livesync-console logs -l "job-name=$NAME" -c kaniko --tail=80 || true
+            exit 1
+          fi
+          # `wait -n` returning 0 only proves one child succeeded; confirm
+          # the Job reached Complete rather than Failed.
+          STATE=$(kubectl -n livesync-console get "job/$NAME" \
+            -o jsonpath='{.status.conditions[?(@.status=="True")].type}' || true)
+          case "$STATE" in
+            *Complete*) echo "Build complete." ;;
+            *Failed*)
+              echo "Build failed. Recent log:"
+              kubectl -n livesync-console logs -l "job-name=$NAME" -c kaniko --tail=80 || true
+              exit 1
+              ;;
+            *)
+              echo "Build state unclear: '$STATE' - treating as failure."
+              kubectl -n livesync-console logs -l "job-name=$NAME" -c kaniko --tail=80 || true
+              exit 1
+              ;;
+          esac
+
+      - name: Tail kaniko log (last 30 lines)
+        if: always()
+        run: |
+          NAME="${{ steps.trigger.outputs.job_name }}"
+          kubectl -n livesync-console logs -l "job-name=$NAME" -c kaniko --tail=30 || true
+
+      - name: Clean up Job
+        if: always()
+        run: |
+          NAME="${{ steps.trigger.outputs.job_name }}"
+          kubectl -n livesync-console delete job "$NAME" --ignore-not-found=true
+
+      - name: Roll out to the console (dogfood mode)
+        run: |
+          set -eu
+          kubectl -n livesync-console rollout restart deploy/livesync-console
+          kubectl -n livesync-console rollout status deploy/livesync-console --timeout=180s
