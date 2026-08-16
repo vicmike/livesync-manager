@@ -31,7 +31,11 @@ Hygiene:
       save-exact), including `octagonal-wheels`
 - [ ] Supported LiveSync plugin version range checked against a current
       plugin release: decrypt a freshly minted setup URI in the plugin
-      ("Use the copied setup URI") and confirm a device onboards
+      ("Connect with Setup URI") and confirm a device onboards. The
+      `src/crypto/setupUri.test.ts` round-trip against
+      `@vrtmrz/livesync-commonlib` covers the decoder; the manual pass covers
+      the dialogs. Update the "Verified against" line in
+      LIVESYNC_INTEGRATION.md with the plugin version and date.
 
 ## Cutting the release
 

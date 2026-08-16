@@ -24,7 +24,12 @@ export function makeTestConfig(env: Record<string, string> = {}): Config {
 export class FakeCouch {
   readonly databases = new Map<
     string,
-    { docCount: number; security: SecurityObject; docs: Map<string, { rev: string }> }
+    {
+      docCount: number;
+      security: SecurityObject;
+      docs: Map<string, { rev: string }>;
+      localDocs: Map<string, Record<string, unknown>>;
+    }
   >();
 
   putDocument(name: string, id: string): Promise<void> {
@@ -76,14 +81,44 @@ export class FakeCouch {
           new CouchError('CouchDB POST /_replicate failed: 404 db_not_found', 404),
         );
       }
-      target = { docCount: 0, security: {}, docs: new Map() };
+      target = { docCount: 0, security: {}, docs: new Map(), localDocs: new Map() };
       this.databases.set(dbName(request.target), target);
     }
+    // Like real CouchDB, replication does not copy _local docs.
     for (const [id, doc] of source.docs) {
       target.docs.set(id, { ...doc });
     }
     target.docCount = target.docs.size;
     return Promise.resolve({ ok: true });
+  }
+
+  listLocalDocs(name: string): Promise<string[]> {
+    const db = this.databases.get(name);
+    if (!db) {
+      return Promise.reject(
+        new CouchError(`CouchDB GET /${name}/_local_docs failed: 404 not_found`, 404),
+      );
+    }
+    return Promise.resolve([...db.localDocs.keys()]);
+  }
+
+  getLocalDoc(name: string, id: string) {
+    const doc = this.databases.get(name)?.localDocs.get(id);
+    if (!doc) {
+      return Promise.reject(new CouchError(`CouchDB GET /${name}/${id} failed: 404`, 404));
+    }
+    return Promise.resolve({ ...doc, _rev: '0-1' });
+  }
+
+  putLocalDoc(name: string, id: string, doc: Record<string, unknown>): Promise<void> {
+    const db = this.databases.get(name);
+    if (!db) {
+      return Promise.reject(new CouchError(`CouchDB PUT /${name}/${id} failed: 404`, 404));
+    }
+    const { _rev: _ignored, ...content } = doc as { _rev?: string };
+    void _ignored;
+    db.localDocs.set(id, content);
+    return Promise.resolve();
   }
   readonly users = new Map<string, { password: string }>();
 
@@ -114,7 +149,7 @@ export class FakeCouch {
     if (this.databases.has(name)) {
       return Promise.reject(new CouchError(`CouchDB PUT /${name} failed: 412 file_exists`, 412));
     }
-    this.databases.set(name, { docCount: 0, security: {}, docs: new Map() });
+    this.databases.set(name, { docCount: 0, security: {}, docs: new Map(), localDocs: new Map() });
     return Promise.resolve();
   }
 

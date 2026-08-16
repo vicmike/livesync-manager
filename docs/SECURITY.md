@@ -40,6 +40,14 @@ Explicitly out of scope for v1:
 Naming convention in code: `e2eePassphrase` vs `uriPassphrase`. UI copy must
 call them "vault encryption passphrase" and "invite passphrase".
 
+The E2EE passphrase alone is not sufficient to decrypt an E2EE-v2 (HKDF)
+vault: the key derivation also needs the `pbkdf2salt` LiveSync stores in
+`_local/obsidian_livesync_sync_parameters` inside the vault database. That
+doc is part of vault integrity — backups and restores must carry it
+(LIVESYNC_INTEGRATION.md § 6), and if it is ever overwritten with a fresh
+salt (upstream issue #1040), devices fail with "Decryption with HKDF failed"
+on everything encrypted under the old salt.
+
 ## Decision: E2EE is optional per vault (default on)
 
 A vault may be created (or adopted) with `encrypted: false`: LiveSync then

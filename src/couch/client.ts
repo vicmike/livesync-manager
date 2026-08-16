@@ -230,6 +230,47 @@ export class CouchClient {
     await this.request('PUT', `/${encodeURIComponent(db)}/${encodeURIComponent(id)}`, doc);
   }
 
+  private localDocPath(db: string, id: string): string {
+    const name = id.replace(/^_local\//, '');
+    return `/${encodeURIComponent(db)}/_local/${encodeURIComponent(name)}`;
+  }
+
+  /**
+   * _local documents are invisible to _all_docs and skipped by replication,
+   * so anything that clones a database must move them explicitly
+   * (LIVESYNC_INTEGRATION.md § 6: LiveSync keeps the E2EE pbkdf2salt in one).
+   */
+  async listLocalDocs(db: string): Promise<string[]> {
+    const res = await this.request<{ rows: { id: string }[] }>(
+      'GET',
+      `/${encodeURIComponent(db)}/_local_docs`,
+    );
+    return res.rows.map((row) => row.id);
+  }
+
+  getLocalDoc(db: string, id: string): Promise<Record<string, unknown> & { _rev: string }> {
+    return this.request('GET', this.localDocPath(db, id));
+  }
+
+  /** Creates or overwrites the target's copy regardless of its revision. */
+  async putLocalDoc(db: string, id: string, doc: Record<string, unknown>): Promise<void> {
+    const { _id, _rev, ...content } = doc as { _id?: string; _rev?: string };
+    void _id;
+    void _rev;
+    let existing: { _rev: string } | undefined;
+    try {
+      existing = await this.getLocalDoc(db, id);
+    } catch (err) {
+      if (!(err instanceof CouchError && err.status === 404)) {
+        throw err;
+      }
+    }
+    await this.request('PUT', this.localDocPath(db, id), {
+      ...content,
+      ...(existing ? { _rev: existing._rev } : {}),
+    });
+  }
+
   replicate(request: ReplicationRequest): Promise<{ ok?: boolean }> {
     // One-shot replication blocks until complete and can far outlive the
     // default timeout on big vaults.

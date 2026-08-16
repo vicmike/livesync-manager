@@ -1,21 +1,39 @@
 # LIVESYNC_INTEGRATION.md
 
 The load-bearing facts about Self-hosted LiveSync and CouchDB that this app
-depends on. Sources: vrtmrz/obsidian-livesync (docs, `utils/flyio/
-generate_setupuri.ts`, `utils/couchdb/couchdb-init.sh`, vendored under
-`reference/`). Verify against upstream when bumping supported plugin versions.
+depends on. Sources: vrtmrz/obsidian-livesync (docs,
+`utils/setup/generate_setup_uri.ts`, `utils/couchdb/provision.ts`, vendored
+under `reference/`) and `@vrtmrz/livesync-commonlib` on npm (the plugin's own
+shared library, published since 1.0). Verify against upstream when bumping
+supported plugin versions and update the line below.
+
+**Verified against: plugin 1.0.14, `@vrtmrz/livesync-commonlib` 0.1.14,
+`octagonal-wheels` 0.1.53 — 2026-08-14.**
 
 ## 1. Setup URI format
 
-A setup URI is `obsidian://setuplivesync?settings=<payload>` where payload is
+A setup URI is `obsidian://setuplivesync?settings=<payload>`. This app emits
+the legacy payload format:
 `encodeURIComponent(encrypt(JSON.stringify(conf), uriPassphrase, false))`
-using `encrypt` from `octagonal-wheels/encryption/encryption`, the exact
-library the plugin uses for decryption. Upstream pins `octagonal-wheels@0.1.30`
-in the Deno script; we depend on the npm package and must keep our pinned
-version decrypt-compatible with the plugin versions we support (add a round-
-trip test that decrypts our output with the plugin-vendored decrypt).
+using `encrypt` from `octagonal-wheels/encryption/encryption` (`%`-prefixed
+AES-256-GCM). The plugin's own generator switched in 1.0 to an HKDF
+ephemeral-salt format (`%$` prefix, `encryptWithEphemeralSalt`), but its
+decoder — commonlib `decodeSettingsFromSetupURI` → `decryptString` —
+explicitly falls back to the legacy `decrypt(payload, passphrase, false)` /
+`(…, true)`, so every plugin version decodes our URIs, while pre-HKDF plugin
+versions could not decode the new format. Revisit if upstream ever deprecates
+that fallback. `src/crypto/setupUri.test.ts` round-trips our output through
+`@vrtmrz/livesync-commonlib` — the exact code a device runs — which is the
+compatibility proof this document requires.
 
-The upstream reference config (`generate_setupuri.ts`) sets, notably:
+Settings payloads with flat `couchDB_*` fields remain the compatibility path
+in 1.0: the plugin migrates them into a `legacy-*` "remote configuration
+profile" on import. The multi-remote profile map (`remoteConfigurations`,
+`activeConfigurationId`) is out of scope for this app while CouchDB is the
+only supported remote.
+
+The upstream reference config (commonlib `PREFERRED_SETTING_SELF_HOSTED` plus
+the behavior flags upstream's `utils/setup/generate_setup_uri.ts` sets):
 
 ```jsonc
 {
@@ -27,31 +45,42 @@ The upstream reference config (`generate_setupuri.ts`) sets, notably:
   "encrypt": true,
   "passphrase": "...",         // the vault E2EE passphrase
   "usePathObfuscation": true,
+  "E2EEAlgorithm": "v2",       // HKDF; the plugin default since 0.25.x
   "syncOnStart": true,
-  "gcDelay": 0,
   "periodicReplication": true,
   "syncOnFileOpen": true,
   "batchSave": true,
   "batch_size": 50, "batches_limit": 50,
   "useHistory": true,
   "disableRequestURI": true,
-  "customChunkSize": 50,
   "syncAfterMerge": false,
-  "concurrencyOfReadChunksOnline": 100,
-  "minimumIntervalOfReadChunksOnline": 100,
+  "syncMaxSizeInMB": 50,
+  "chunkSplitterVersion": "v3-rabin-karp",
+  "usePluginSyncV2": true,
+  "customChunkSize": 60,
+  "sendChunksBulkMaxSize": 1,
+  "concurrencyOfReadChunksOnline": 30,
+  "minimumIntervalOfReadChunksOnline": 25,
   "handleFilenameCaseSensitive": false,
-  "doNotUseFixedRevisionForChunks": false,
   "settingVersion": 10,
   "notifyThresholdOfRemoteStorageSize": 800
 }
 ```
+
+Do not set `doNotUseFixedRevisionForChunks` or `gcDelay`: the former's UI
+control was removed in plugin 1.0 and upstream's generator explicitly erases
+it from URIs; the latter was a stale flyio-script value fighting the plugin
+default.
 
 Store this as the per-vault `settings_json` template at vault creation; per-
 device invites override only the credential fields. All devices of a vault
 must share the chunking-related "tweak values". Since plugin v0.23+ these
 are also mirrored into the remote DB, and clients show a Configuration
 Mismatch dialog if they drift; keeping one template per vault avoids
-triggering it.
+triggering it. Plugin 1.0 additionally auto-aligns "compatible" differences
+(chunk hash algorithm, chunk size, splitter version) by default, and joining
+devices that answer "Yes, fetch" during setup adopt the vault's stored
+tweaks, so template evolution does not strand existing vaults.
 
 `settingVersion` matters: bump-testing against new plugin releases is a
 maintenance task. Treat "supported plugin version range" as a documented,
@@ -94,7 +123,11 @@ now ≠ fix persisted.
 
 Per vault:
 
-1. `PUT /vault-<slug>` (admin).
+1. `PUT /vault-<slug>` (admin), then stamp
+   `{"_id":"obsydian_livesync_version","version":12,"type":"versioninfo"}`
+   ("obsydian" is upstream's spelling; `VER = 12` in commonlib). Upstream's
+   `provision.ts` does the same; plugin 1.0.6+ uses it to distinguish an
+   empty-but-valid remote from a failed read.
 2. Per device: create `org.couchdb.user:<username>` doc in `_users` with
    `{"type":"user","name":...,"password":...,"roles":[]}`.
 3. `PUT /vault-<slug>/_security` with all of the vault's active device users
@@ -106,16 +139,24 @@ Locking a vault (emergency brake, mirrors LiveSync's "lock remote database"
 recovery guidance): swap `_security.members` to an empty sentinel role so no
 device can read/write, while the app admin can still operate.
 
-## 4. Device onboarding flow (what the user experiences)
+## 4. Device onboarding flow (what the user experiences, plugin 1.0+)
 
 1. Dashboard → vault → "Add device" → name it → invite URL/QR appears.
 2. New device: install Obsidian + Self-hosted LiveSync in an **empty vault**,
-   open the invite page, tap the deep link (or scan QR on another screen),
-   plugin opens "Use the copied setup URI", user enters the invite passphrase
-   shown on the page.
-3. Plugin asks: import conf? → yes; choose **"Set it up as secondary or
-   subsequent device"** (recent plugin versions then run the simplified
-   Fast Setup fetch).
+   open the invite page, tap the deep link (or scan QR on another screen; or
+   choose **"Connect with Setup URI"** in the plugin's setup notice and paste
+   the URI), enter the invite passphrase shown on the page.
+3. The 1.0 setup wizard then asks, in order:
+   - **"Fetch configuration from remote database?"** — joining devices answer
+     *"Yes, please fetch the configuration"* (adopts the vault's stored tweak
+     values); the very first device answers *"No, please use the settings in
+     the URI"*.
+   - **"Do you want to consult the doctor?"** — *"No, please use the settings
+     in the URI as is"* (our template is current).
+   - **"Apply new configuration"** — **"Apply and Fetch"** for a new/empty
+     device. *"Apply and Merge"* is only for a device that already holds the
+     vault's files; *"Apply and Rebuild"* overwrites the server for every
+     other device and must never be chosen while joining.
 4. Vault downloads. Device flips pending → active when we first observe its
    credentials authenticate (or the user hits "I've imported it").
 
@@ -142,11 +183,27 @@ this to be exact.
 
 - Snapshot: `POST /_replicate {"source":"vault-x","target":"bk-vault-x-<ts>",
   "create_target":true}` (one-shot). Poll `_active_tasks`/completion.
+- **Copy LiveSync's `_local` documents explicitly.** Replication and
+  `_all_docs` both skip `_local/*` docs, and LiveSync's E2EE v2 (HKDF, the
+  default algorithm) stores its `pbkdf2salt` in
+  `_local/obsidian_livesync_sync_parameters`. A snapshot without that doc is
+  undecryptable **even with the correct passphrase**: a device reconnecting
+  to the restored database mints a fresh salt, and every pre-restore chunk
+  fails with "Decryption with HKDF failed" (upstream issue #1040 shows the
+  symptom). So after every replication-based copy, list `GET /db/_local_docs`
+  and re-PUT the `_local/obsidian_livesync*` / `_local/obsydian_livesync*`
+  docs (`sync_parameters`, `milestone`, `nodeinfo` — the latter two use
+  upstream's historical "obsydian" spelling) into the target. Do **not** copy
+  other `_local` docs: they are replication checkpoints, and cloning them
+  into a rebuilt database could make a replicator trust sequence numbers the
+  new database never issued (`src/services/localDocs.ts`).
 - Verify: compare `doc_count` and `update_seq` progress; fetch N random ids
   from both and compare revs.
 - Filesystem export (later milestone): stream `_all_docs?include_docs=true&
-  attachments=true` to a compressed archive; restore streams back via
-  `_bulk_docs` with `new_edits:false` to preserve revision history.
+  attachments=true` to a compressed archive **plus the `_local` LiveSync docs
+  above** (they are absent from `_all_docs`); restore streams back via
+  `_bulk_docs` with `new_edits:false` to preserve revision history, then
+  re-PUTs the `_local` docs.
 - Restore is always to a new DB first (`-restored-<ts>`); destructive swap is
   a separate, confirm-token operation that locks the original DB first.
 - Note: E2EE means backups are encrypted blobs without the vault passphrase,
@@ -163,8 +220,16 @@ this to be exact.
 
 ## 8. Upstream references
 
-- Plugin: github.com/vrtmrz/obsidian-livesync (docs/quick_setup.md, docs on
-  secondary-device setup)
-- `reference/generate_setupuri.ts`: canonical settings payload + encryption
-- `reference/couchdb-init.sh`: canonical server settings
-- octagonal-wheels on npm (encryption module used by the plugin)
+- Plugin: github.com/vrtmrz/obsidian-livesync (docs/quick_setup.md; the
+  English message catalog `src/common/messagesJson/en.json` is the source of
+  truth for dialog wording quoted in § 4 and on the invite page)
+- `@vrtmrz/livesync-commonlib` on npm: the plugin's shared library
+  (setup-URI encode/decode, `PREFERRED_SETTING_SELF_HOSTED`,
+  `CURRENT_SETTING_VERSION`, `_local` doc ids); dev-dependency here for the
+  round-trip test
+- `reference/generate_setup_uri.ts` (`utils/setup/generate_setup_uri.ts`):
+  canonical settings payload + encryption entry point
+- `reference/provision.ts` (`utils/couchdb/provision.ts`): canonical server
+  settings + database provisioning
+- octagonal-wheels on npm (encryption module used by the plugin and by us;
+  keep our pin ≥ the version commonlib requires)

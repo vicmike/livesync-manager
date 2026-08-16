@@ -342,7 +342,7 @@ function Backups(props: { vaultId: string; backups: Backup[]; onChange: () => vo
               setNotice(
                 `Vault restored (${result.docCount} docs). Pre-swap snapshot kept as ` +
                   `${result.preSwapBackup}. Every device must now fetch the vault from the ` +
-                  'server again (LiveSync: Fetch / rebuild from server).',
+                  'server again (in the LiveSync plugin: fetch from the remote database).',
               );
               props.onChange();
             })

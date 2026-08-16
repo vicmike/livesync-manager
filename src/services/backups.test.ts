@@ -30,16 +30,37 @@ describe('runBackup', () => {
     const backup = await runBackup(deps, vault.id, 'manual');
 
     expect(backup.status).toBe('verified');
-    expect(backup.docCount).toBe(3);
+    // 3 notes + the stamped obsydian_livesync_version marker.
+    expect(backup.docCount).toBe(4);
     expect(backup.location).toMatch(/^bk-vault-personal-\d{14}$/);
     expect(backup.verifiedAt).not.toBeNull();
-    expect(fake.databases.get(backup.location)!.docCount).toBe(3);
+    expect(fake.databases.get(backup.location)!.docCount).toBe(4);
 
     const messages = (
       deps.db.prepare('SELECT message FROM events').all() as { message: string }[]
     ).map((e) => e.message);
-    expect(messages).toContain('Backed up vault Personal (3 docs)');
+    expect(messages).toContain('Backed up vault Personal (4 docs)');
     expect(messages.some((m) => m.startsWith('Verified backup of vault Personal'))).toBe(true);
+  });
+
+  it('carries LiveSync _local docs (the E2EE salt) into the snapshot', async () => {
+    const { deps, fake, vault } = await makeFixture();
+    await fake.putLocalDoc('vault-personal', '_local/obsidian_livesync_sync_parameters', {
+      pbkdf2salt: 'salt-A',
+    });
+    await fake.putLocalDoc('vault-personal', '_local/obsydian_livesync_milestone', {
+      type: 'milestoneinfo',
+    });
+    // Replication checkpoints must not be cloned into the snapshot.
+    await fake.putLocalDoc('vault-personal', '_local/abc123-checkpoint', { seq: 42 });
+
+    const backup = await runBackup(deps, vault.id, 'manual');
+    const snapshot = fake.databases.get(backup.location)!;
+    expect(snapshot.localDocs.get('_local/obsidian_livesync_sync_parameters')).toEqual({
+      pbkdf2salt: 'salt-A',
+    });
+    expect(snapshot.localDocs.has('_local/obsydian_livesync_milestone')).toBe(true);
+    expect(snapshot.localDocs.has('_local/abc123-checkpoint')).toBe(false);
   });
 
   it('marks the row failed and audits when replication breaks', async () => {

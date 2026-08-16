@@ -160,7 +160,7 @@ describe('restore over HTTP', () => {
       headers: { cookie },
     });
     expect(preview.statusCode).toBe(200);
-    expect((preview.json() as { docCount: number }).docCount).toBe(2);
+    expect((preview.json() as { docCount: number }).docCount).toBe(3);
 
     const restore = await server.inject({
       method: 'POST',
@@ -187,9 +187,9 @@ describe('restore over HTTP', () => {
     });
     expect(swap.statusCode).toBe(200);
     const result = swap.json() as { docCount: number; preSwapBackup: string };
-    expect(result.docCount).toBe(2);
-    expect(fake.databases.get('vault-personal')!.docCount).toBe(2);
-    expect(fake.databases.get(result.preSwapBackup)!.docCount).toBe(3);
+    expect(result.docCount).toBe(3);
+    expect(fake.databases.get('vault-personal')!.docCount).toBe(3);
+    expect(fake.databases.get(result.preSwapBackup)!.docCount).toBe(4);
     await server.close();
   });
 });

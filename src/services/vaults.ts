@@ -13,7 +13,16 @@ export interface VaultCouch {
   databaseInfo(name: string): Promise<DatabaseInfo>;
   setSecurity(db: string, security: SecurityObject): Promise<void>;
   getSecurity(db: string): Promise<SecurityObject>;
+  putDocument(db: string, id: string, doc: Record<string, unknown>): Promise<void>;
 }
+
+// Upstream provisioning stamps this marker in fresh databases (VER = 12 in
+// livesync-commonlib; the "obsydian" spelling is upstream's). Plugin 1.0.6+
+// uses it to tell an empty-but-valid remote from an unreadable one.
+export const LIVESYNC_VERSION_DOC = {
+  id: 'obsydian_livesync_version',
+  doc: { version: 12, type: 'versioninfo' },
+} as const;
 
 /** Members object granting access to exactly the given usernames. */
 export function membersSecurity(names: string[]): SecurityObject {
@@ -31,15 +40,18 @@ export function activeDeviceUsernames(db: AppDatabase, vaultId: string): string[
   ).map((r) => r.couch_username);
 }
 
-// Per-vault LiveSync settings template (docs/LIVESYNC_INTEGRATION.md § 1).
-// Non-secret tweak values only: credentials, database name, and the E2EE
-// passphrase are merged in when a setup URI is minted. All devices of a
-// vault must share these values or clients raise a config-mismatch dialog.
+// Per-vault LiveSync settings template (docs/LIVESYNC_INTEGRATION.md § 1),
+// mirroring commonlib's PREFERRED_SETTING_SELF_HOSTED plus the behavior flags
+// upstream's setup-URI generator sets. Non-secret tweak values only:
+// credentials, database name, and the E2EE passphrase are merged in when a
+// setup URI is minted. All devices of a vault must share these values or
+// clients raise a config-mismatch dialog (plugin 1.0 auto-aligns compatible
+// chunk-related differences; joining devices are told to fetch the remote
+// config, which adopts the vault's stored tweaks).
 export const LIVESYNC_SETTINGS_TEMPLATE = {
   encrypt: true,
   usePathObfuscation: true,
   syncOnStart: true,
-  gcDelay: 0,
   periodicReplication: true,
   syncOnFileOpen: true,
   batchSave: true,
@@ -47,12 +59,15 @@ export const LIVESYNC_SETTINGS_TEMPLATE = {
   batches_limit: 50,
   useHistory: true,
   disableRequestURI: true,
-  customChunkSize: 50,
   syncAfterMerge: false,
-  concurrencyOfReadChunksOnline: 100,
-  minimumIntervalOfReadChunksOnline: 100,
+  syncMaxSizeInMB: 50,
+  chunkSplitterVersion: 'v3-rabin-karp',
+  usePluginSyncV2: true,
+  customChunkSize: 60,
+  sendChunksBulkMaxSize: 1,
+  concurrencyOfReadChunksOnline: 30,
+  minimumIntervalOfReadChunksOnline: 25,
   handleFilenameCaseSensitive: false,
-  doNotUseFixedRevisionForChunks: false,
   settingVersion: 10,
   notifyThresholdOfRemoteStorageSize: 800,
 } as const;
@@ -108,6 +123,9 @@ export function settingsTemplate(encrypted: boolean): Record<string, unknown> {
     ...LIVESYNC_SETTINGS_TEMPLATE,
     encrypt: encrypted,
     usePathObfuscation: encrypted,
+    // E2EE algorithm only applies when encryption is on; v2 (HKDF) is the
+    // plugin default and what all current devices use.
+    ...(encrypted ? { E2EEAlgorithm: 'v2' } : {}),
   };
 }
 
@@ -191,6 +209,9 @@ export async function createVault(
   await deps.couch.createDatabase(couchDbName);
   try {
     await deps.couch.setSecurity(couchDbName, NO_MEMBERS_SECURITY);
+    await deps.couch.putDocument(couchDbName, LIVESYNC_VERSION_DOC.id, {
+      ...LIVESYNC_VERSION_DOC.doc,
+    });
     deps.db
       .prepare(
         `INSERT INTO vaults (id, name, slug, couch_db_name, e2ee_passphrase_enc, settings_json,

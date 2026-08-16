@@ -50,7 +50,8 @@ describe('vault lifecycle on a real CouchDB', () => {
     expect(security.members?.roles).toEqual(['_admin']);
 
     const detail = await getVaultDetail(deps, vault.id);
-    expect(detail.couch).toMatchObject({ docCount: 0 });
+    // The stamped obsydian_livesync_version marker counts as a doc.
+    expect(detail.couch).toMatchObject({ docCount: 1 });
 
     await deleteVault(deps, vault.id);
     expect(await client.listDatabases()).not.toContain(vault.couchDbName);

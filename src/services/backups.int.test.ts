@@ -56,9 +56,10 @@ describe('backup snapshot on a real CouchDB', () => {
 
     const backup = await runBackup(backupDeps, vault.id, 'manual');
     expect(backup.status).toBe('verified');
-    expect(backup.docCount).toBe(8);
+    // 8 notes + the stamped obsydian_livesync_version marker.
+    expect(backup.docCount).toBe(9);
     const info = await client.databaseInfo(backup.location);
-    expect(info.doc_count).toBe(8);
+    expect(info.doc_count).toBe(9);
 
     // Re-verification against the live snapshot passes...
     await verifyBackup(backupDeps, backup.id);
@@ -83,11 +84,51 @@ describe('restore swap on a real CouchDB', () => {
     await client.putDocument(vault.couchDbName, 'note-after', { body: 'late' });
 
     const result = await restoreSwap({ db, couch: client, config }, backup.id);
-    expect(result.docCount).toBe(4);
-    expect((await client.databaseInfo(vault.couchDbName)).doc_count).toBe(4);
-    expect((await client.databaseInfo(result.preSwapBackup)).doc_count).toBe(5);
+    expect(result.docCount).toBe(5);
+    expect((await client.databaseInfo(vault.couchDbName)).doc_count).toBe(5);
+    expect((await client.databaseInfo(result.preSwapBackup)).doc_count).toBe(6);
 
     await client.deleteDatabase(result.preSwapBackup);
+    await deleteBackup(backupDeps, backup.id);
+    await deleteVault(vaultDeps, vault.id);
+  });
+});
+
+describe('LiveSync _local docs on a real CouchDB', () => {
+  it('survive backup and restore even though replication skips them', async () => {
+    const { restoreToNewDb } = await import('./restore.js');
+    const vault = await createVault(vaultDeps, `lsc int localdocs ${Date.now()}`);
+    await client.putDocument(vault.couchDbName, 'note-0', { body: 'content' });
+    // The doc LiveSync's E2EE v2 stores the pbkdf2salt in.
+    await client.putLocalDoc(vault.couchDbName, '_local/obsidian_livesync_sync_parameters', {
+      pbkdf2salt: 'salt-A',
+    });
+
+    const backup = await runBackup(backupDeps, vault.id, 'manual');
+    const inSnapshot = await client.getLocalDoc(
+      backup.location,
+      '_local/obsidian_livesync_sync_parameters',
+    );
+    expect(inSnapshot.pbkdf2salt).toBe('salt-A');
+
+    const { restoredDbName } = await restoreToNewDb({ db, couch: client, config }, backup.id);
+    const inRestored = await client.getLocalDoc(
+      restoredDbName,
+      '_local/obsidian_livesync_sync_parameters',
+    );
+    expect(inRestored.pbkdf2salt).toBe('salt-A');
+
+    // Overwriting an existing _local doc must also work (restore into a
+    // database that already has one).
+    await client.putLocalDoc(restoredDbName, '_local/obsidian_livesync_sync_parameters', {
+      pbkdf2salt: 'salt-B',
+    });
+    expect(
+      (await client.getLocalDoc(restoredDbName, '_local/obsidian_livesync_sync_parameters'))
+        .pbkdf2salt,
+    ).toBe('salt-B');
+
+    await client.deleteDatabase(restoredDbName);
     await deleteBackup(backupDeps, backup.id);
     await deleteVault(vaultDeps, vault.id);
   });

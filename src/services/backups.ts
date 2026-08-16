@@ -4,10 +4,11 @@ import type { Config } from '../config/index.js';
 import type { AppDatabase } from '../db/index.js';
 import type { DatabaseInfo, ReplicationRequest } from '../couch/client.js';
 import { recordEvent } from './events.js';
+import { copyLiveSyncLocalDocs, type LocalDocsCouch } from './localDocs.js';
 import { VaultError } from './vaults.js';
 
 // The CouchDB operations backups need; satisfied by CouchClient.
-export interface BackupCouch {
+export interface BackupCouch extends LocalDocsCouch {
   databaseInfo(name: string): Promise<DatabaseInfo>;
   replicate(request: ReplicationRequest): Promise<{ ok?: boolean }>;
   deleteDatabase(name: string): Promise<void>;
@@ -129,6 +130,8 @@ export async function runBackup(
       target: authorityUrl(deps.config, location),
       create_target: true,
     });
+    // Replication skips _local docs, but the E2EE salt lives in one.
+    const localDocs = await copyLiveSyncLocalDocs(deps.couch, vault.couch_db_name, location);
     const source = await deps.couch.databaseInfo(vault.couch_db_name);
     const target = await deps.couch.databaseInfo(location);
     deps.db
@@ -153,7 +156,7 @@ export async function runBackup(
       actor: kind === 'manual' ? 'admin' : 'system',
       message: `Backed up vault ${vault.name} (${target.doc_count} docs)`,
       vaultId,
-      detail: { backupId: id, location },
+      detail: { backupId: id, location, localDocs },
     });
   } catch (err) {
     deps.db

@@ -15,8 +15,8 @@ infrastructure; it never touches note content and never replaces LiveSync.
 7. `docs/DEPLOYMENT.md`: binding runtime contract + Docker/K8s deployment
 8. `docs/MILESTONES.md`: PR-sized implementation plan; work top to bottom
 
-`reference/` contains vendored upstream scripts (`generate_setupuri.ts`,
-`couchdb-init.sh`) from vrtmrz/obsidian-livesync. They are documentation, not
+`reference/` contains vendored upstream scripts (`generate_setup_uri.ts`,
+`provision.ts`) from vrtmrz/obsidian-livesync. They are documentation, not
 runtime code; do not import them; port their behavior per
 `docs/LIVESYNC_INTEGRATION.md`.
 

@@ -4,6 +4,7 @@ import type { AppDatabase } from '../db/index.js';
 import type { DatabaseInfo, ReplicationRequest, SecurityObject } from '../couch/client.js';
 import { getBackup, type Backup } from './backups.js';
 import { recordEvent } from './events.js';
+import { copyLiveSyncLocalDocs, type LocalDocsCouch } from './localDocs.js';
 import {
   activeDeviceUsernames,
   getVault,
@@ -13,7 +14,7 @@ import {
 } from './vaults.js';
 
 // The CouchDB operations restore needs; satisfied by CouchClient.
-export interface RestoreCouch {
+export interface RestoreCouch extends LocalDocsCouch {
   databaseInfo(name: string): Promise<DatabaseInfo>;
   replicate(request: ReplicationRequest): Promise<{ ok?: boolean }>;
   deleteDatabase(name: string): Promise<void>;
@@ -83,6 +84,8 @@ export async function restoreToNewDb(
     target: authorityUrl(deps.config, restoredDbName),
     create_target: true,
   });
+  // Replication skips _local docs, but the E2EE salt lives in one.
+  await copyLiveSyncLocalDocs(deps.couch, backup.location, restoredDbName);
   const info = await deps.couch.databaseInfo(restoredDbName);
   recordEvent(deps.db, {
     level: 'info',
@@ -112,7 +115,8 @@ export async function restoreSwapConsequences(
       (backup.docCount !== null ? ` (${backup.docCount.toLocaleString()} docs)` : ''),
     'The vault is locked during the swap; a pre-swap safety snapshot is taken first and kept',
     'Afterwards every device must fetch the vault from the server again ' +
-      '(LiveSync: "Fetch" / rebuild from server). Replication checkpoints do not survive a swap',
+      '(in the LiveSync plugin: fetch from the remote database). ' +
+      'Replication checkpoints do not survive a swap',
   ];
 }
 
@@ -144,6 +148,7 @@ export async function restoreSwap(
     target: authorityUrl(deps.config, preSwap),
     create_target: true,
   });
+  await copyLiveSyncLocalDocs(deps.couch, vault.couchDbName, preSwap);
   const preSwapInfo = await deps.couch.databaseInfo(preSwap);
   deps.db
     .prepare(
@@ -167,6 +172,7 @@ export async function restoreSwap(
     target: authorityUrl(deps.config, vault.couchDbName),
     create_target: true,
   });
+  await copyLiveSyncLocalDocs(deps.couch, backup.location, vault.couchDbName);
   const restored = await deps.couch.databaseInfo(vault.couchDbName);
   if (backup.docCount !== null && restored.doc_count !== backup.docCount) {
     recordEvent(deps.db, {

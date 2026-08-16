@@ -31,7 +31,8 @@ describe('restorePreview', () => {
     const { deps, backup } = await makeFixture();
     const preview = await restorePreview(deps, backup.id);
     expect(preview.location).toBe(backup.location);
-    expect(preview.docCount).toBe(4);
+    // 4 notes + the stamped obsydian_livesync_version marker.
+    expect(preview.docCount).toBe(5);
     expect(preview.restoreTarget).toMatch(/^vault-personal-restored-\d{14}$/);
   });
 });
@@ -41,9 +42,22 @@ describe('restoreToNewDb', () => {
     const { deps, fake, backup } = await makeFixture();
     await fake.putDocument('vault-personal', 'note-after-backup');
     const result = await restoreToNewDb(deps, backup.id);
-    expect(result.docCount).toBe(4);
-    expect(fake.databases.get(result.restoredDbName)!.docCount).toBe(4);
-    expect(fake.databases.get('vault-personal')!.docCount).toBe(5);
+    expect(result.docCount).toBe(5);
+    expect(fake.databases.get(result.restoredDbName)!.docCount).toBe(5);
+    expect(fake.databases.get('vault-personal')!.docCount).toBe(6);
+  });
+
+  it('carries the E2EE salt doc from the snapshot', async () => {
+    const { deps, fake, backup } = await makeFixture();
+    await fake.putLocalDoc(backup.location, '_local/obsidian_livesync_sync_parameters', {
+      pbkdf2salt: 'salt-A',
+    });
+    const result = await restoreToNewDb(deps, backup.id);
+    expect(
+      fake.databases
+        .get(result.restoredDbName)!
+        .localDocs.get('_local/obsidian_livesync_sync_parameters'),
+    ).toEqual({ pbkdf2salt: 'salt-A' });
   });
 });
 
@@ -51,14 +65,14 @@ describe('restoreSwap', () => {
   it('locks, snapshots, swaps, and restores device access', async () => {
     const { deps, db, fake, vault, device, backup } = await makeFixture();
     await fake.putDocument('vault-personal', 'note-to-lose');
-    expect(fake.databases.get('vault-personal')!.docCount).toBe(5);
+    expect(fake.databases.get('vault-personal')!.docCount).toBe(6);
 
     const result = await restoreSwap(deps, backup.id);
-    expect(result.docCount).toBe(4);
-    expect(fake.databases.get('vault-personal')!.docCount).toBe(4);
+    expect(result.docCount).toBe(5);
+    expect(fake.databases.get('vault-personal')!.docCount).toBe(5);
 
     // Pre-swap snapshot holds the overwritten state and is tracked.
-    expect(fake.databases.get(result.preSwapBackup)!.docCount).toBe(5);
+    expect(fake.databases.get(result.preSwapBackup)!.docCount).toBe(6);
     const rows = listBackups(db, vault.id);
     expect(rows.some((b) => b.location === result.preSwapBackup)).toBe(true);
 
@@ -66,6 +80,28 @@ describe('restoreSwap', () => {
     expect(getVault(db, vault.id).locked).toBe(false);
     const security = await fake.getSecurity('vault-personal');
     expect(security.members?.names).toEqual([device.couchUsername]);
+  });
+
+  it('carries the E2EE salt doc through preswap snapshot and swap', async () => {
+    const { deps, fake, backup } = await makeFixture();
+    await fake.putLocalDoc(backup.location, '_local/obsidian_livesync_sync_parameters', {
+      pbkdf2salt: 'salt-from-backup',
+    });
+    await fake.putLocalDoc('vault-personal', '_local/obsidian_livesync_sync_parameters', {
+      pbkdf2salt: 'salt-live',
+    });
+
+    const result = await restoreSwap(deps, backup.id);
+    expect(
+      fake.databases
+        .get(result.preSwapBackup)!
+        .localDocs.get('_local/obsidian_livesync_sync_parameters'),
+    ).toEqual({ pbkdf2salt: 'salt-live' });
+    expect(
+      fake.databases
+        .get('vault-personal')!
+        .localDocs.get('_local/obsidian_livesync_sync_parameters'),
+    ).toEqual({ pbkdf2salt: 'salt-from-backup' });
   });
 
   it('leaves the vault locked when the restored count is wrong', async () => {

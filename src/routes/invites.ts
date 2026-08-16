@@ -52,21 +52,24 @@ function renderInvitePage(invite: InvitePage, qrSvg: string, consumePath: string
 <li>On the new device, create an empty vault in Obsidian and install the
 <em>Self-hosted LiveSync</em> community plugin.</li>
 <li>Open this page on that device and tap the button below, or scan the QR code
-with it and open the copied link.</li>
-<li>When the plugin asks, choose <em>Use the copied setup URI</em> and enter the
-invite passphrase shown below.</li>
-<li>For <em>How would you like to set it up?</em>, choose
-<em>Set it up as secondary or subsequent device</em>.</li>
+with it and open the copied link. (If the link does not open the plugin, choose
+<em>Connect with Setup URI</em> in the plugin's setup notice and paste it.)</li>
+<li>When the plugin asks, paste or confirm the Setup URI and enter the invite
+passphrase shown below.</li>
 </ol>
-<p>The plugin then walks through a few confirmations. Because the vault on this
-device is empty, it is safe to accept them:</p>
+<p>The plugin (version 1.0 or later) then walks through a few dialogs. Answer
+them like this:</p>
 <ul>
-<li><em>Importing LiveSync's conf?</em> Answer yes.</li>
-<li>Any <em>overwrite?</em> prompt: yes.</li>
-<li><em>Fetch remote config failed</em>: choose <em>Skip and Proceed</em>. This is
-normal for a brand-new vault, not an error.</li>
-<li><em>Config Doctor</em> suggestions: choose no, so the settings from this link
-are kept.</li>
+<li><em>Fetch configuration from remote database?</em> If other devices already
+sync this vault, choose <em>Yes, please fetch the configuration</em>; on the
+very first device choose <em>No, please use the settings in the URI</em>.</li>
+<li><em>Do you want to consult the doctor?</em> Choose
+<em>No, please use the settings in the URI as is</em>, so the settings from this
+link are kept.</li>
+<li><em>Apply new configuration</em>: choose <strong>Apply and Fetch</strong>.
+(<em>Apply and Merge</em> is only for a device that already holds this vault's
+notes; never choose <em>Apply and Rebuild</em> when joining, it overwrites the
+server for every other device.)</li>
 <li>Hidden-file sync and other optional features: your choice, and you can
 change them later in the plugin's settings.</li>
 </ul>

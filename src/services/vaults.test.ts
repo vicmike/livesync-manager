@@ -50,6 +50,11 @@ describe('createVault', () => {
     expect(deps.fake.databases.has('vault-personal')).toBe(true);
     const security = await deps.fake.getSecurity('vault-personal');
     expect(security.members?.roles).toEqual(['_admin']);
+    // Stamped like upstream provisioning, so plugin 1.0.6+ sees a valid
+    // empty remote instead of an unreadable one.
+    expect(deps.fake.databases.get('vault-personal')!.docs.has('obsydian_livesync_version')).toBe(
+      true,
+    );
 
     const row = deps.db
       .prepare('SELECT e2ee_passphrase_enc, settings_json FROM vaults WHERE id = ?')

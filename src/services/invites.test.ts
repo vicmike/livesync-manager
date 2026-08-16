@@ -65,9 +65,12 @@ describe('createInvite', () => {
       couchDB_DBNAME: 'vault-personal',
       encrypt: true,
       settingVersion: 10,
-      gcDelay: 0,
+      chunkSplitterVersion: 'v3-rabin-karp',
+      E2EEAlgorithm: 'v2',
       syncAfterMerge: false,
     });
+    // Removed upstream in 1.0; must not resurface in minted URIs.
+    expect(conf).not.toHaveProperty('doNotUseFixedRevisionForChunks');
     expect(conf.passphrase).toBe(vault.e2eePassphrase);
   });
 

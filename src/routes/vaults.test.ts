@@ -49,7 +49,8 @@ describe('vault routes', () => {
       name: 'Personal',
       deviceCount: 0,
       lastBackup: null,
-      couch: { docCount: 0 },
+      // The stamped obsydian_livesync_version marker counts as a doc.
+      couch: { docCount: 1 },
     });
     await server.close();
   });

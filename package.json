@@ -38,7 +38,7 @@
     "argon2": "0.44.0",
     "better-sqlite3": "12.11.1",
     "fastify": "5.10.0",
-    "octagonal-wheels": "0.1.47",
+    "octagonal-wheels": "0.1.53",
     "qrcode": "1.5.4",
     "uuid": "14.0.1",
     "zod": "4.4.3"
@@ -48,6 +48,7 @@
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "26.1.0",
     "@types/qrcode": "1.5.6",
+    "@vrtmrz/livesync-commonlib": "0.1.14",
     "concurrently": "10.0.3",
     "eslint": "10.6.0",
     "eslint-config-prettier": "10.1.8",

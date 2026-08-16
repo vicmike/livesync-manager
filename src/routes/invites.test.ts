@@ -33,8 +33,10 @@ describe('invite page', () => {
     expect(res.body).toContain('obsidian://setuplivesync?settings=');
     expect(res.body).toContain('<svg');
     expect(res.body).toContain(invite.uriPassphrase);
-    // Confirmation-dialog guidance: the non-obvious "not an error" answer.
-    expect(res.body).toContain('Skip and Proceed');
+    // Confirmation-dialog guidance for the plugin 1.0 setup flow: the
+    // non-obvious joining-device answer and the dangerous one to avoid.
+    expect(res.body).toContain('Apply and Fetch');
+    expect(res.body).toContain('never choose <em>Apply and Rebuild</em>');
     await server.close();
   });
 
