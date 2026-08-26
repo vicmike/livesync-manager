@@ -1,5 +1,5 @@
 import type { AppDatabase } from '../db/index.js';
-import type { VaultServiceDeps } from './vaults.js';
+import type { DatabaseInfo, SecurityObject, UserDoc } from '../couch/client.js';
 import { getVault } from './vaults.js';
 import { listDevices } from './devices.js';
 
@@ -8,13 +8,30 @@ const STALE_BACKUP_MS = 2 * 24 * 60 * 60 * 1000;
 export interface VaultHealth {
   vaultId: string;
   couch: { docCount: number; updateSeq: string; sizeBytes: number } | { error: string };
-  devices: { name: string; status: string; lastSeen: string | null }[];
+  devices: {
+    id: string;
+    name: string;
+    status: string;
+    firstConnected: string | null;
+    access: 'configured' | 'drifted' | 'unknown';
+  }[];
   backup: {
     lastFinishedAt: string | null;
     lastVerifiedAt: string | null;
     lastStatus: string | null;
   };
   warnings: string[];
+}
+
+export interface VaultHealthCouch {
+  databaseInfo(name: string): Promise<DatabaseInfo>;
+  getSecurity(db: string): Promise<SecurityObject>;
+  getUser(name: string): Promise<UserDoc | undefined>;
+}
+
+export interface VaultHealthDeps {
+  db: AppDatabase;
+  couch: VaultHealthCouch;
 }
 
 function lastBackupInfo(db: AppDatabase, vaultId: string): VaultHealth['backup'] {
@@ -38,10 +55,7 @@ function lastBackupInfo(db: AppDatabase, vaultId: string): VaultHealth['backup']
 }
 
 /** Human-readable warnings only (AGENTS.md); every string is actionable. */
-export async function getVaultHealth(
-  deps: VaultServiceDeps,
-  vaultId: string,
-): Promise<VaultHealth> {
+export async function getVaultHealth(deps: VaultHealthDeps, vaultId: string): Promise<VaultHealth> {
   const vault = getVault(deps.db, vaultId);
   const warnings: string[] = [];
 
@@ -57,9 +71,52 @@ export async function getVaultHealth(
     );
   }
 
-  const devices = listDevices(deps.db, vaultId)
+  const registeredDevices = listDevices(deps.db, vaultId)
     .filter((d) => d.status !== 'revoked')
-    .map((d) => ({ name: d.name, status: d.status, lastSeen: d.lastSeen }));
+    .map((d) => ({
+      ...d,
+      access: 'unknown' as VaultHealth['devices'][number]['access'],
+    }));
+
+  if (!('error' in couch)) {
+    try {
+      const security = await deps.couch.getSecurity(vault.couchDbName);
+      const members = new Set(security.members?.names ?? []);
+      await Promise.all(
+        registeredDevices.map(async (device) => {
+          const user = await deps.couch.getUser(device.couchUsername);
+          const missingUser = user === undefined;
+          const missingMembership = !members.has(device.couchUsername);
+          device.access = missingUser || missingMembership ? 'drifted' : 'configured';
+          if (missingUser && missingMembership) {
+            warnings.push(
+              `Device ${device.name}'s CouchDB account and vault access are missing. Reinvite it before expecting it to sync.`,
+            );
+          } else if (missingUser) {
+            warnings.push(
+              `Device ${device.name}'s CouchDB account is missing. Reinvite it before expecting it to sync.`,
+            );
+          } else if (missingMembership) {
+            warnings.push(
+              `Device ${device.name}'s CouchDB account is not allowed to access this vault. Reinvite it before expecting it to sync.`,
+            );
+          }
+        }),
+      );
+    } catch (err) {
+      warnings.push(
+        `Could not verify device access (${(err as Error).message}). Check CouchDB and try again.`,
+      );
+    }
+  }
+
+  const devices = registeredDevices.map((device) => ({
+    id: device.id,
+    name: device.name,
+    status: device.status,
+    firstConnected: device.firstConnected,
+    access: device.access,
+  }));
 
   const backup = lastBackupInfo(deps.db, vaultId);
   if (backup.lastFinishedAt === null) {

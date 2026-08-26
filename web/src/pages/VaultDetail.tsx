@@ -28,7 +28,12 @@ function bytes(n: number | null): string {
   return n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(n / 1024)} kB`;
 }
 
-function Devices(props: { vaultId: string; devices: Device[]; onChange: () => void }) {
+function Devices(props: {
+  vaultId: string;
+  devices: Device[];
+  health: VaultHealth | null;
+  onChange: () => void;
+}) {
   const [name, setName] = useState('');
   const [platform, setPlatform] = useState('desktop');
   const [busy, setBusy] = useState(false);
@@ -117,7 +122,8 @@ function Devices(props: { vaultId: string; devices: Device[]; onChange: () => vo
               <th>Name</th>
               <th>Platform</th>
               <th>Status</th>
-              <th>Last activity</th>
+              <th>Access</th>
+              <th>Connection confirmed</th>
               <th></th>
             </tr>
           </thead>
@@ -127,8 +133,20 @@ function Devices(props: { vaultId: string; devices: Device[]; onChange: () => vo
                 <td>{d.name}</td>
                 <td className="muted">{d.platform ?? '-'}</td>
                 <td>{statusBadge(d.status)}</td>
+                <td>
+                  {d.status === 'revoked'
+                    ? '-'
+                    : statusBadge(
+                        props.health?.devices.find((healthDevice) => healthDevice.id === d.id)
+                          ?.access ?? 'unknown',
+                      )}
+                </td>
                 <td className="muted">
-                  {d.status === 'revoked' ? `revoked ${timeAgo(d.revokedAt)}` : timeAgo(d.lastSeen)}
+                  {d.status === 'revoked'
+                    ? `revoked ${timeAgo(d.revokedAt)}`
+                    : d.firstConnected
+                      ? timeAgo(d.firstConnected)
+                      : 'not confirmed'}
                 </td>
                 <td className="row-actions">
                   {d.status !== 'revoked' && (
@@ -161,6 +179,11 @@ function Devices(props: { vaultId: string; devices: Device[]; onChange: () => vo
           </tbody>
         </table>
       )}
+      <p className="muted">
+        The manager can verify whether a device account is configured, but CouchDB does not expose a
+        reliable live per-device sync signal. “Connection confirmed” records onboarding, not recent
+        sync activity.
+      </p>
       <ErrorLine error={error} />
       {reveal && (
         <InviteReveal
@@ -641,7 +664,7 @@ export function VaultDetailPage(props: { vaultId: string }) {
           {timeAgo(health?.backup.lastVerifiedAt ?? null)}.
         </p>
       </Card>
-      <Devices vaultId={vault.id} devices={devices} onChange={refresh} />
+      <Devices vaultId={vault.id} devices={devices} health={health} onChange={refresh} />
       {vault.legacyMembers.length > 0 && <LegacyMembers vault={vault} onChange={refresh} />}
       <Backups vaultId={vault.id} backups={backups} onChange={refresh} />
       <DangerZone vault={vault} onChange={refresh} />

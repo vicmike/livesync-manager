@@ -120,7 +120,7 @@ export function vaultRoutes(server: FastifyInstance): void {
 
   server.get('/vaults/:id/health', async (request) => {
     const { id } = request.params as { id: string };
-    return getVaultHealth(deps, id);
+    return getVaultHealth({ db: server.db, couch: server.couch }, id);
   });
 
   server.delete('/vaults/:id', async (request, reply) => {

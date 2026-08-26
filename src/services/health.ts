@@ -1,4 +1,5 @@
 import type { CouchClient } from '../couch/client.js';
+import { checkServerConfig } from './serverConfig.js';
 
 export interface HealthSnapshot {
   status: 'ok' | 'degraded' | 'unknown';
@@ -6,6 +7,11 @@ export interface HealthSnapshot {
     reachable: boolean;
     version?: string;
     latencyMs?: number;
+    error?: string;
+  };
+  config: {
+    status: 'ok' | 'drifted' | 'unknown';
+    checkedAt: string | null;
     error?: string;
   };
   checkedAt: string | null;
@@ -19,6 +25,7 @@ export class HealthMonitor {
   private cache: HealthSnapshot = {
     status: 'unknown',
     couchdb: { reachable: false },
+    config: { status: 'unknown', checkedAt: null },
     checkedAt: null,
   };
   private timer: NodeJS.Timeout | undefined;
@@ -33,6 +40,17 @@ export class HealthMonitor {
     const startedAt = Date.now();
     try {
       const info = await this.couch.serverInfo();
+      let config: HealthSnapshot['config'];
+      try {
+        const check = await checkServerConfig(this.couch);
+        config = { status: check.ok ? 'ok' : 'drifted', checkedAt: new Date().toISOString() };
+      } catch (err) {
+        config = {
+          status: 'unknown',
+          checkedAt: new Date().toISOString(),
+          error: (err as Error).message,
+        };
+      }
       this.cache = {
         status: 'ok',
         couchdb: {
@@ -40,12 +58,14 @@ export class HealthMonitor {
           version: info.version,
           latencyMs: Date.now() - startedAt,
         },
+        config,
         checkedAt: new Date().toISOString(),
       };
     } catch (err) {
       this.cache = {
         status: 'degraded',
         couchdb: { reachable: false, error: (err as Error).message },
+        config: { status: 'unknown', checkedAt: null },
         checkedAt: new Date().toISOString(),
       };
     }

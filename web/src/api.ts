@@ -37,6 +37,7 @@ export interface Session {
 export interface Health {
   status: 'ok' | 'degraded' | 'unknown';
   couchdb: { reachable: boolean; version?: string; latencyMs?: number; error?: string };
+  config: { status: 'ok' | 'drifted' | 'unknown'; checkedAt: string | null; error?: string };
   checkedAt: string | null;
 }
 
@@ -77,7 +78,13 @@ export interface SwapResult {
 export interface VaultHealth {
   vaultId: string;
   couch: { docCount: number; updateSeq: string; sizeBytes: number } | { error: string };
-  devices: { name: string; status: string; lastSeen: string | null }[];
+  devices: {
+    id: string;
+    name: string;
+    status: string;
+    firstConnected: string | null;
+    access: 'configured' | 'drifted' | 'unknown';
+  }[];
   backup: {
     lastFinishedAt: string | null;
     lastVerifiedAt: string | null;

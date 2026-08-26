@@ -44,8 +44,8 @@ function StatusCards(props: {
     devices.length === 0
       ? ['No devices yet', 'muted']
       : [
-          `${devices.length} device(s); oldest activity ${timeAgo(devices.map((d) => d.lastSeen).sort()[0] ?? null)} (approximate)`,
-          'ok',
+          `${devices.length} active device registration(s); recent per-device sync is not observable through CouchDB`,
+          'muted',
         ];
   const backupsHealthy =
     warnings.length === 0

@@ -9,6 +9,7 @@ describe('server', () => {
     expect(res.json()).toEqual({
       status: 'unknown',
       couchdb: { reachable: false },
+      config: { status: 'unknown', checkedAt: null },
       checkedAt: null,
     });
     await server.close();

@@ -63,8 +63,8 @@ Rate-limit `/invite/*` aggressively; constant-time token compare against
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/health` | app + CouchDB server health (reachable, version, disk). Unauthenticated: it is the container liveness/readiness probe target, so it returns the cached result of the most recent poll and never calls CouchDB synchronously |
-| GET | `/vaults/:id/health` | doc count, update_seq, DB size, per-device last-seen, backup freshness, warnings[] (human-readable strings) |
+| GET | `/health` | app + CouchDB server health plus the cached required-configuration status. Unauthenticated: it is the container liveness/readiness probe target, so it returns the cached result of the most recent poll and never calls CouchDB synchronously |
+| GET | `/vaults/:id/health` | doc count, update_seq, DB size, per-device account-access state, onboarding confirmation, backup freshness, warnings[] (human-readable strings). CouchDB cannot provide reliable live per-device replication status. |
 | GET | `/server/config` | per-key pass/fail against the required CouchDB settings (LIVESYNC_INTEGRATION.md § 2) |
 | POST | `/server/config/fix` | idempotent PUTs for the failing keys. Response carries a `persistence: "unknown"` caveat: on declaratively managed CouchDB installs the fix reverts at the next CouchDB restart (LIVESYNC_INTEGRATION.md § 2). The UI must surface this |
 
