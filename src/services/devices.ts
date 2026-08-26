@@ -261,7 +261,21 @@ export async function reinviteDevice(
       409,
     );
   }
+  const vault = deps.db
+    .prepare('SELECT couch_db_name FROM vaults WHERE id = ?')
+    .get(device.vaultId) as { couch_db_name: string } | undefined;
+  if (!vault) {
+    throw new VaultError('Device vault not found.', 404);
+  }
   const couchPassword = randomBytes(24).toString('base64url');
+  // Reinviting is also the explicit repair lever for an account removed from
+  // _security. Restore membership before rotating its credential: if the
+  // rotation fails, the existing credential still works rather than leaving
+  // the device with less access than before.
+  await deps.couch.setSecurity(
+    vault.couch_db_name,
+    membersWith(await deps.couch.getSecurity(vault.couch_db_name), device.couchUsername),
+  );
   await deps.couch.putUser(device.couchUsername, couchPassword);
   deps.db.prepare('UPDATE devices SET couch_password_enc = ? WHERE id = ?').run(
     encryptSecret(deps.masterKey, couchPassword, {

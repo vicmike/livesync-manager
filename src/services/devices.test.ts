@@ -120,6 +120,23 @@ describe('reinviteDevice', () => {
     await revokeDevice(deps, device.id);
     await expect(reinviteDevice(deps, device.id)).rejects.toThrowError(/revoked/);
   });
+
+  it('restores a missing CouchDB user and vault membership', async () => {
+    const { deps, fake, vault } = await makeFixture();
+    const { device } = await addDevice(deps, vault.id, { name: 'Phone' });
+    fake.users.delete(device.couchUsername);
+    await fake.setSecurity('vault-personal', {
+      admins: { names: [], roles: [] },
+      members: { names: [], roles: ['_admin'] },
+    });
+
+    await reinviteDevice(deps, device.id);
+
+    expect(fake.users.has(device.couchUsername)).toBe(true);
+    expect((await fake.getSecurity('vault-personal')).members?.names).toContain(
+      device.couchUsername,
+    );
+  });
 });
 
 describe('revokeDevice', () => {
