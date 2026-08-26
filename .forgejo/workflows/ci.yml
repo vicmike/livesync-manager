@@ -39,6 +39,27 @@ jobs:
           npm ci
           npm run test:integration
 
+  chart:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Lint and render the Helm chart
+        run: |
+          helm lint charts/livesync-manager --strict --values charts/livesync-manager/ci-values.yaml
+          helm template livesync-manager charts/livesync-manager \
+            --namespace livesync \
+            --values charts/livesync-manager/ci-values.yaml >/dev/null
+      - name: Package the Helm chart
+        run: helm package charts/livesync-manager --destination dist/chart
+      - uses: actions/upload-artifact@v4
+        with:
+          name: livesync-manager-chart
+          path: dist/chart/*.tgz
+          if-no-files-found: error
+
   docs:
     runs-on: ubuntu-22.04
     steps:

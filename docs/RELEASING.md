@@ -14,6 +14,9 @@ and roll the deployment.
 Code and tests:
 
 - [ ] `npm run lint && npm run typecheck && npm test`: clean
+- [ ] `helm lint charts/livesync-manager --strict --values charts/livesync-manager/ci-values.yaml`
+      and `helm template livesync-manager charts/livesync-manager --namespace
+      livesync --values charts/livesync-manager/ci-values.yaml`: clean
 - [ ] Integration suite against a disposable CouchDB (never a real one):
       `docker compose -f dev/couchdb.yml up -d` (or `dev/couchdb-k8s.sh`),
       then `COUCHDB_TEST_ALLOW_CONFIG_MUTATION=1 npm run test:integration`
@@ -26,6 +29,9 @@ Hygiene:
 
 - [ ] No secrets, private hostnames, or homelab-specific values in the repo:
       `grep -rniE "<your-domains>|<your-hosts>" --include='*.{md,ts,tsx,yaml,yml,json}' .`
+- [ ] Bump `charts/livesync-manager/Chart.yaml` when the chart changes. Chart
+      versions are immutable package identities and are independent from the
+      application image version.
 - [ ] README states the trust model up front; SECURITY.md agrees with the code
 - [ ] `reference/` attribution intact; dependencies pinned (`.npmrc`
       save-exact), including `octagonal-wheels`
@@ -44,6 +50,9 @@ Hygiene:
 3. Create the release on the forge with human-readable notes: what changed,
    any migration notes (the app migrates its own SQLite on boot), and the
    plugin version range tested.
+4. Download the `livesync-manager-chart` CI artifact and attach its `.tgz` to
+   the release. The repository does not yet define a public OCI or HTTP Helm
+   registry, so do not claim a registry publication until one is configured.
 
 ## First GitHub publication
 

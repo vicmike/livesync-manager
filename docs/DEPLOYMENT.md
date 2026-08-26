@@ -58,7 +58,7 @@ deployment:
 Conflating them produces invites that work inside the network and fail
 silently everywhere else.
 
-## Docker Compose (recommended)
+## Docker Compose (single-host alternative)
 
 The repo ships a [compose.yaml](../compose.yaml) bundling the app and a
 CouchDB, plus an optional Caddy proxy.
@@ -122,37 +122,31 @@ separate concern and equally worth automating.
 
 ## Kubernetes
 
-Kubernetes is the reference deployment, but nothing in the code may assume
-it. The essentials of a working Deployment:
+Kubernetes is the reference deployment. Install with the Helm chart in
+[`charts/livesync-manager`](../charts/livesync-manager/README.md). It creates
+one replica, a `ReadWriteOnce` PVC, and uses `Recreate` during upgrades so
+SQLite never has two writers.
 
-```yaml
-spec:
-  replicas: 1
-  strategy: { type: Recreate }        # one SQLite writer, ever
-  template:
-    spec:
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000               # the image's node user
-        fsGroup: 1000
-      containers:
-        - name: livesync-manager
-          image: <your-registry>/livesync-manager:<tag>
-          env:
-            - { name: COUCHDB_ADMIN_URL, value: http://couchdb.<ns>.svc:5984 }
-            - { name: COUCHDB_PUBLIC_URL, value: https://couchdb.example.com }
-            - { name: PUBLIC_BASE_URL, value: https://livesync.example.com }
-            - { name: TRUST_PROXY, value: "true" }
-            # COUCHDB_ADMIN_USER / COUCHDB_ADMIN_PASSWORD from a Secret
-          readinessProbe: { httpGet: { path: /api/v1/health, port: 8080 } }
-          livenessProbe: { httpGet: { path: /api/v1/health, port: 8080 } }
-          volumeMounts: [{ name: data, mountPath: /data }]
-      volumes:
-        - name: data
-          persistentVolumeClaim: { claimName: livesync-manager-data }
+Create the Secret outside Helm. Do not commit credentials or `MASTER_KEY` in
+values files.
+
+```sh
+kubectl -n livesync create secret generic livesync-manager-secrets \
+  --from-literal=COUCHDB_ADMIN_USER=admin \
+  --from-literal=COUCHDB_ADMIN_PASSWORD='replace-me' \
+  --from-literal=MASTER_KEY='base64-encoded-32-byte-key'
+
+helm upgrade --install livesync-manager charts/livesync-manager \
+  --namespace livesync --create-namespace \
+  --set existingSecret=livesync-manager-secrets \
+  --set image.repository=registry.example.com/livesync-manager \
+  --set image.tag=0.3.1 \
+  --set config.couchdb.adminUrl=http://couchdb.couchdb.svc.cluster.local:5984 \
+  --set config.couchdb.publicUrl=https://couchdb.example.com \
+  --set config.publicBaseUrl=https://livesync.example.com
 ```
 
-Notes for the manifest author:
+Important chart settings:
 
 - **Storage:** the `/data` PVC must be `ReadWriteOnce` on a local-block
   StorageClass (Longhorn, local-path, EBS, ...). Never NFS; `nolock` mounts
@@ -174,3 +168,7 @@ Notes for the manifest author:
   fix is then temporary: mirror the required settings into the declarative
   source and use the app's check as verification. See
   LIVESYNC_INTEGRATION.md § 2.
+- **Optional log telemetry:** `telemetry.couchdbLogs` remains off. Enabling
+  both it and `createRbac` grants read-only access to CouchDB pod logs in the
+  configured namespace; those logs can contain source IP addresses. See the
+  chart README before enabling it.

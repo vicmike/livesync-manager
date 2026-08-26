@@ -1,0 +1,77 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/example/livesync-manager
+  pullPolicy: IfNotPresent
+  tag: ''
+
+imagePullSecrets: []
+nameOverride: ''
+fullnameOverride: ''
+
+serviceAccount:
+  create: true
+  name: ''
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ''
+  annotations: {}
+  hosts: []
+  tls: []
+
+persistence:
+  enabled: true
+  existingClaim: ''
+  storageClass: ''
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+
+config:
+  couchdb:
+    adminUrl: http://couchdb.default.svc.cluster.local:5984
+    publicUrl: https://couchdb.example.com
+  publicBaseUrl: https://livesync.example.com
+  trustProxy: true
+  logLevel: info
+
+# Create this secret outside Helm (for example with External Secrets or
+# sealed-secrets). It must contain all of the keys below.
+existingSecret: ''
+secretKeys:
+  couchdbAdminUser: COUCHDB_ADMIN_USER
+  couchdbAdminPassword: COUCHDB_ADMIN_PASSWORD
+  masterKey: MASTER_KEY
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Disabled by default. When implemented by the application, this grants a
+# dedicated service account read-only access to CouchDB pod metadata and logs
+# in a different namespace. Logs may include source IP addresses.
+telemetry:
+  couchdbLogs:
+    enabled: false
+    createRbac: false
+    namespace: ''

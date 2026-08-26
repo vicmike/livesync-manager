@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled }}
+{{- $hosts := required "ingress.hosts must contain at least one host when ingress is enabled" .Values.ingress.hosts }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "livesync-manager.fullname" . }}
+  labels:
+    {{- include "livesync-manager.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    {{- range $hosts }}
+    - host: {{ required "ingress host must not be empty" .host }}
+      http:
+        paths:
+          - path: {{ default "/" .path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "livesync-manager.fullname" $ }}
+                port:
+                  name: http
+    {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

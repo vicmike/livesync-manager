@@ -41,7 +41,8 @@ Documentation:
 | `docs/API.md` | v1 REST surface |
 | `docs/SECURITY.md` | Threat model and binding key-handling decisions |
 | `docs/LIVESYNC_INTEGRATION.md` | The LiveSync/CouchDB facts everything rests on |
-| `docs/DEPLOYMENT.md` | Runtime contract and Docker/Kubernetes deployment |
+| `docs/DEPLOYMENT.md` | Runtime contract and deployment guide |
+| `charts/livesync-manager/` | Reference Kubernetes Helm chart |
 | `docs/RELEASING.md` | Release checklist and procedure |
 | `docs/MILESTONES.md` | PR-sized implementation plan (start at M0) |
 | `reference/` | Vendored upstream scripts (documentation only) |

@@ -1,0 +1,103 @@
+{{- $secret := required "existingSecret is required; provide CouchDB credentials and MASTER_KEY through an external Secret" .Values.existingSecret }}
+{{- if and (not .Values.persistence.enabled) (not .Values.persistence.existingClaim) }}
+{{- fail "persistence.enabled must be true or persistence.existingClaim must name a PersistentVolumeClaim; LiveSync Manager requires persistent /data storage" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "livesync-manager.fullname" . }}
+  labels:
+    {{- include "livesync-manager.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "livesync-manager.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "livesync-manager.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "livesync-manager.serviceAccountName" . }}
+      automountServiceAccountToken: {{ and .Values.telemetry.couchdbLogs.enabled .Values.telemetry.couchdbLogs.createRbac }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: livesync-manager
+          image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DATA_DIR
+              value: /data
+            - name: COUCHDB_ADMIN_URL
+              value: {{ .Values.config.couchdb.adminUrl | quote }}
+            - name: COUCHDB_PUBLIC_URL
+              value: {{ .Values.config.couchdb.publicUrl | quote }}
+            - name: PUBLIC_BASE_URL
+              value: {{ .Values.config.publicBaseUrl | quote }}
+            - name: TRUST_PROXY
+              value: {{ .Values.config.trustProxy | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            - name: COUCHDB_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ .Values.secretKeys.couchdbAdminUser }}
+            - name: COUCHDB_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ .Values.secretKeys.couchdbAdminPassword }}
+            - name: MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ .Values.secretKeys.masterKey }}
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ default (include "livesync-manager.fullname" .) .Values.persistence.existingClaim }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

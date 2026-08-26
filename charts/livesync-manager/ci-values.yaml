@@ -1,0 +1,5 @@
+existingSecret: livesync-manager-ci-secrets
+
+image:
+  repository: registry.example.com/livesync-manager
+  tag: ci
