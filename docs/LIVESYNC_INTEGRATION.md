@@ -7,8 +7,8 @@ under `reference/`) and `@vrtmrz/livesync-commonlib` on npm (the plugin's own
 shared library, published since 1.0). Verify against upstream when bumping
 supported plugin versions and update the line below.
 
-**Verified against: plugin 1.0.14, `@vrtmrz/livesync-commonlib` 0.1.14,
-`octagonal-wheels` 0.1.53 — 2026-08-14.**
+**Verified against: plugin 1.0.18, `@vrtmrz/livesync-commonlib` 0.1.19,
+`octagonal-wheels` 0.1.53 — 2026-08-25.**
 
 ## 1. Setup URI format
 
