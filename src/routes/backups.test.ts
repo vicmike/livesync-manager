@@ -177,13 +177,21 @@ describe('restore over HTTP', () => {
       headers: { cookie },
     });
     expect((dry.json() as { consequences: string[] }).consequences.join(' ')).toMatch(
-      /fetch the vault/,
+      /Stop LiveSync on every device.*fetch the vault/,
     );
-    const swap = await server.inject({
+    const missingAcknowledgement = await server.inject({
       method: 'POST',
       url: `/api/v1/backups/${backup.id}/restore/swap`,
       headers: { cookie },
       payload: { confirmToken: dry.json().confirmToken },
+    });
+    expect(missingAcknowledgement.statusCode).toBe(400);
+    expect((missingAcknowledgement.json() as { error: string }).error).toMatch(/Stop LiveSync/);
+    const swap = await server.inject({
+      method: 'POST',
+      url: `/api/v1/backups/${backup.id}/restore/swap`,
+      headers: { cookie },
+      payload: { confirmToken: dry.json().confirmToken, devicesStopped: true },
     });
     expect(swap.statusCode).toBe(200);
     const result = swap.json() as { docCount: number; preSwapBackup: string };

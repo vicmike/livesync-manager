@@ -18,7 +18,10 @@ import {
 } from '../services/restore.js';
 import { getVault } from '../services/vaults.js';
 
-const swapSchema = z.object({ confirmToken: z.string() });
+const swapSchema = z.object({
+  confirmToken: z.string(),
+  devicesStopped: z.literal(true),
+});
 
 const deleteSchema = z.object({ confirmToken: z.string() });
 
@@ -75,7 +78,14 @@ export function backupRoutes(server: FastifyInstance): void {
         consequences: await restoreSwapConsequences(restoreDeps, id),
       };
     }
-    const { confirmToken } = swapSchema.parse(request.body);
+    const parsed = swapSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error:
+          'Stop LiveSync on every device using this vault, then acknowledge that before restoring.',
+      });
+    }
+    const { confirmToken } = parsed.data;
     if (!server.confirmTokens.consume('restore-swap', id, confirmToken)) {
       return reply.code(409).send({
         error:

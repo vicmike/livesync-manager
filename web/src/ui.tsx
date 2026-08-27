@@ -58,15 +58,17 @@ export function ConfirmDialog(props: {
   title: string;
   dryRun: DryRun;
   typedNameLabel?: string;
+  acknowledgementLabel?: string;
   busy: boolean;
   error: string | null;
-  onConfirm: (confirmToken: string, typedName: string) => void;
+  onConfirm: (confirmToken: string, typedName: string, acknowledged: boolean) => void;
   onCancel: () => void;
 }) {
   const [typedName, setTypedName] = useState('');
+  const [acknowledged, setAcknowledged] = useState(false);
   function submit(e: FormEvent) {
     e.preventDefault();
-    props.onConfirm(props.dryRun.confirmToken, typedName);
+    props.onConfirm(props.dryRun.confirmToken, typedName, acknowledged);
   }
   return (
     <div className="overlay">
@@ -83,12 +85,26 @@ export function ConfirmDialog(props: {
             <input value={typedName} onChange={(e) => setTypedName(e.target.value)} autoFocus />
           </label>
         )}
+        {props.acknowledgementLabel && (
+          <label>
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+            />{' '}
+            {props.acknowledgementLabel}
+          </label>
+        )}
         <ErrorLine error={props.error} />
         <div className="dialog-buttons">
           <button type="button" onClick={props.onCancel} disabled={props.busy}>
             Cancel
           </button>
-          <button type="submit" className="danger" disabled={props.busy}>
+          <button
+            type="submit"
+            className="danger"
+            disabled={props.busy || (Boolean(props.acknowledgementLabel) && !acknowledged)}
+          >
             {props.busy ? 'Working...' : props.title}
           </button>
         </div>
@@ -105,7 +121,7 @@ export function InviteReveal(props: { deviceName: string; invite: Invite; onClos
         <h2>Invite for {props.deviceName}</h2>
         <p>
           Scan with the new device's camera, or open the link on it. The Obsidian vault on that
-          device must be <strong>empty</strong>.
+          device must be <strong>empty</strong>. Use Self-hosted LiveSync 1.0.13 or newer.
         </p>
         <div className="invite-qr" dangerouslySetInnerHTML={{ __html: props.invite.urlQr }} />
         <p className="reveal">

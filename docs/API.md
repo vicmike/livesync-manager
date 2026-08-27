@@ -77,7 +77,7 @@ Rate-limit `/invite/*` aggressively; constant-time token compare against
 | POST | `/backups/:id/verify` | count + spot-check verification |
 | GET  | `/backups/:id/restore/preview` | snapshot doc count/size and the `-restored-<ts>` target name |
 | POST | `/backups/:id/restore` | materializes `-restored-<ts>` DB (non-destructive; adopt it via `/vaults/connect` to use it) |
-| POST | `/backups/:id/restore/swap` | destructive swap: confirm-token flow. Locks the vault, keeps a pre-swap snapshot, replaces the live DB, restores device access. Devices must re-fetch afterwards. On a mid-swap failure the vault stays locked with both snapshots intact. |
+| POST | `/backups/:id/restore/swap` | destructive swap: confirm-token flow with `devicesStopped: true`. Locks the vault, keeps a pre-swap snapshot, replaces the live DB, restores device access. Stop LiveSync on every device before confirming; devices must re-fetch afterward. On a mid-swap failure the vault stays locked with both snapshots intact. |
 | DELETE | `/backups/:id` | confirm-token flow |
 
 ## Events

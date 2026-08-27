@@ -114,6 +114,7 @@ export async function restoreSwapConsequences(
       `snapshot ${backup.location}` +
       (backup.docCount !== null ? ` (${backup.docCount.toLocaleString()} docs)` : ''),
     'The vault is locked during the swap; a pre-swap safety snapshot is taken first and kept',
+    'Stop LiveSync on every device before continuing. A device with stale encryption state must not write during a restore.',
     'Afterwards every device must fetch the vault from the server again ' +
       '(in the LiveSync plugin: fetch from the remote database). ' +
       'Replication checkpoints do not survive a swap',

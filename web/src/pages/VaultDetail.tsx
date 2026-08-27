@@ -355,11 +355,12 @@ function Backups(props: { vaultId: string; backups: Backup[]; onChange: () => vo
           busy={busy}
           error={error}
           onCancel={() => setSwapping(null)}
-          onConfirm={(confirmToken) =>
+          acknowledgementLabel="I stopped LiveSync on every device using this vault."
+          onConfirm={(confirmToken, _typedName, devicesStopped) =>
             void run(async () => {
               const result = await api.post<SwapResult>(
                 `/backups/${swapping.backup.id}/restore/swap`,
-                { confirmToken },
+                { confirmToken, devicesStopped },
               );
               setSwapping(null);
               setNotice(

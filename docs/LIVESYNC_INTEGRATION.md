@@ -146,7 +146,7 @@ Locking a vault (emergency brake, mirrors LiveSync's "lock remote database"
 recovery guidance): swap `_security.members` to an empty sentinel role so no
 device can read/write, while the app admin can still operate.
 
-## 4. Device onboarding flow (what the user experiences, plugin 1.0+)
+## 4. Device onboarding flow (what the user experiences, plugin 1.0.13+)
 
 1. Dashboard → vault → "Add device" → name it → invite URL/QR appears.
 2. New device: install Obsidian + Self-hosted LiveSync in an **empty vault**,
@@ -166,6 +166,11 @@ device can read/write, while the app admin can still operate.
      other device and must never be chosen while joining.
 4. Vault downloads. Device flips pending → active when we first observe its
    credentials authenticate (or the user hits "I've imported it").
+
+Device accounts are deliberately not CouchDB server administrators. LiveSync's
+optional server requirements check may report forbidden access when run with a
+device account; ordinary vault replication is unaffected. The manager performs
+server health checks with its separate CouchDB administrator account.
 
 The invite page must state, unmissably: *if this device's vault is not empty,
 LiveSync will merge the two vaults. This is very hard to undo.* This single
@@ -212,7 +217,9 @@ this to be exact.
   `_bulk_docs` with `new_edits:false` to preserve revision history, then
   re-PUTs the `_local` docs.
 - Restore is always to a new DB first (`-restored-<ts>`); destructive swap is
-  a separate, confirm-token operation that locks the original DB first.
+  a separate, confirm-token operation that locks the original DB first. Stop
+  LiveSync on every device before the swap, then have every device fetch from
+  the restored server state afterward.
 - Note: E2EE means backups are encrypted blobs without the vault passphrase,
   another reason the passphrase must live in the admin's password manager,
   not only in this app.

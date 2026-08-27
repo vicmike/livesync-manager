@@ -57,7 +57,7 @@ with it and open the copied link. (If the link does not open the plugin, choose
 <li>When the plugin asks, paste or confirm the Setup URI and enter the invite
 passphrase shown below.</li>
 </ol>
-<p>The plugin (version 1.0 or later) then walks through a few dialogs. Answer
+<p>Use Self-hosted LiveSync version 1.0.13 or newer. The plugin then walks through a few dialogs. Answer
 them like this:</p>
 <ul>
 <li><em>Fetch configuration from remote database?</em> If other devices already
@@ -73,6 +73,8 @@ server for every other device.)</li>
 <li>Hidden-file sync and other optional features: your choice, and you can
 change them later in the plugin's settings.</li>
 </ul>
+<p>The device account can sync this vault, but it cannot inspect or change
+server-wide CouchDB settings. Use this manager's server health check for that.</p>
 <p>Then let the vault finish downloading.</p>
 <p style="text-align:center"><a class="button" href="${invite.setupUri}">Set up this device</a></p>
 ${qrSvg.replace('<svg', '<svg class="qr"')}
