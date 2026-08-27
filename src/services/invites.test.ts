@@ -63,6 +63,7 @@ describe('createInvite', () => {
       couchDB_USER: device.couchUsername,
       couchDB_PASSWORD: 'device-secret-pw',
       couchDB_DBNAME: 'vault-personal',
+      isConfigured: true,
       encrypt: true,
       settingVersion: 10,
       chunkSplitterVersion: 'v3-rabin-karp',

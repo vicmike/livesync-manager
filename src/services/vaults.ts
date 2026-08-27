@@ -49,6 +49,9 @@ export function activeDeviceUsernames(db: AppDatabase, vaultId: string): string[
 // chunk-related differences; joining devices are told to fetch the remote
 // config, which adopts the vault's stored tweaks).
 export const LIVESYNC_SETTINGS_TEMPLATE = {
+  // LiveSync uses this explicit flag after a setup-URI import. Without it,
+  // current plugin versions restart into the first-run setup screen.
+  isConfigured: true,
   encrypt: true,
   usePathObfuscation: true,
   syncOnStart: true,

@@ -42,6 +42,7 @@ the behavior flags upstream's `utils/setup/generate_setup_uri.ts` sets):
   "couchDB_USER": "...",       // per-device user in our design
   "couchDB_PASSWORD": "...",
   "couchDB_DBNAME": "...",
+  "isConfigured": true,       // required after setup-URI import
   "encrypt": true,
   "passphrase": "...",         // the vault E2EE passphrase
   "usePathObfuscation": true,

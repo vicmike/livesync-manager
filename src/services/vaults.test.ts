@@ -67,7 +67,11 @@ describe('createVault', () => {
         rowId: vault.id,
       }),
     ).toBe(vault.e2eePassphrase);
-    expect(JSON.parse(row.settings_json)).toMatchObject({ encrypt: true, settingVersion: 10 });
+    expect(JSON.parse(row.settings_json)).toMatchObject({
+      isConfigured: true,
+      encrypt: true,
+      settingVersion: 10,
+    });
 
     const events = deps.db.prepare('SELECT message FROM events').all() as { message: string }[];
     expect(events.map((e) => e.message)).toContain('Created vault Personal');
