@@ -75,6 +75,15 @@ describe('createInvite', () => {
       E2EEAlgorithm: 'v2',
       syncAfterMerge: false,
     });
+    expect(conf.activeConfigurationId).toBe('livesync-manager-couchdb');
+    expect(conf.remoteConfigurations).toEqual({
+      'livesync-manager-couchdb': expect.objectContaining({
+        id: 'livesync-manager-couchdb',
+        name: 'LiveSync Manager CouchDB',
+        isEncrypted: false,
+        uri: expect.stringContaining('couchdb.example.com'),
+      }),
+    });
     // Removed upstream in 1.0; must not resurface in minted URIs.
     expect(conf).not.toHaveProperty('doNotUseFixedRevisionForChunks');
     expect(conf.passphrase).toBe(vault.e2eePassphrase);

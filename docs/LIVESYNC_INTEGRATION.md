@@ -27,11 +27,11 @@ that fallback. `src/crypto/setupUri.test.ts` round-trips our output through
 `@vrtmrz/livesync-commonlib` — the exact code a device runs — which is the
 compatibility proof this document requires.
 
-Settings payloads with flat `couchDB_*` fields remain the compatibility path
-in 1.0: the plugin migrates them into a `legacy-*` "remote configuration
-profile" on import. The multi-remote profile map (`remoteConfigurations`,
-`activeConfigurationId`) is out of scope for this app while CouchDB is the
-only supported remote.
+Setup URIs carry both the compatibility `couchDB_*` fields and an explicit,
+active CouchDB profile in `remoteConfigurations`. The plugin still migrates a
+flat-only payload into a `legacy-*` profile, but that is a compatibility path,
+not the supported new-device setup flow. Each device's profile has the same
+stable identity and name but its own CouchDB credentials.
 
 `isConfigured: true` is required. Without it, the plugin can import and
 decrypt the URI but returns to its first-run setup screen after the required
@@ -48,6 +48,8 @@ the behavior flags upstream's `utils/setup/generate_setup_uri.ts` sets):
   "couchDB_USER": "...",       // per-device user in our design
   "couchDB_PASSWORD": "...",
   "couchDB_DBNAME": "...",
+  "remoteConfigurations": { "livesync-manager-couchdb": { "...": "..." } },
+  "activeConfigurationId": "livesync-manager-couchdb",
   "isConfigured": true,       // required after setup-URI import
   "encrypt": true,
   "passphrase": "...",         // the vault E2EE passphrase

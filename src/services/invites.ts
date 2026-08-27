@@ -1,4 +1,6 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
+import { upsertRemoteConfigurationInPlace } from '@vrtmrz/livesync-commonlib/remote-configurations';
+import type { ObsidianLiveSyncSettings } from '@vrtmrz/livesync-commonlib/settings';
 import QRCode from 'qrcode';
 import { v7 as uuidv7 } from 'uuid';
 import type { Config } from '../config/index.js';
@@ -194,15 +196,16 @@ export async function createInvite(
     throw new Error('Vault or device not found');
   }
 
-  // Order matters for humans reading a decrypted payload, not for the
-  // plugin; keep the reference script's shape: connection, template, secrets.
-  // Unencrypted vaults carry no passphrase (the template sets encrypt:false).
+  // Current LiveSync setup persists remote connections as a profile. Keep the
+  // payload compact enough for a phone-scannable QR code; the full factory
+  // settings object exceeds QR capacity.
   const conf: Record<string, unknown> = {
+    ...(JSON.parse(vault.settings_json) as Record<string, unknown>),
     couchDB_URI: deps.config.couchdb.publicUrl,
     couchDB_USER: input.couchUsername,
     couchDB_PASSWORD: input.couchPassword,
     couchDB_DBNAME: vault.couch_db_name,
-    ...(JSON.parse(vault.settings_json) as Record<string, unknown>),
+    isConfigured: true,
   };
   if (vault.encrypted === 1) {
     conf.passphrase = decryptSecret(deps.masterKey, vault.e2ee_passphrase_enc, {
@@ -211,7 +214,14 @@ export async function createInvite(
       rowId: input.vaultId,
     });
   }
-
+  // Match upstream's CouchDB setup generator: create and select the profile
+  // while retaining compatibility fields for established clients. The ID is
+  // stable because credentials vary per device but the selected remote does not.
+  upsertRemoteConfigurationInPlace(conf as unknown as ObsidianLiveSyncSettings, 'couchdb', {
+    id: 'livesync-manager-couchdb',
+    name: 'LiveSync Manager CouchDB',
+    activate: true,
+  });
   const uriPassphrase = generateInvitePassphrase();
   const setupUri = await encryptSetupUri(conf, uriPassphrase);
   const token = randomBytes(32).toString('base64url');
