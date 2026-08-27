@@ -1,6 +1,4 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
-import { upsertRemoteConfigurationInPlace } from '@vrtmrz/livesync-commonlib/remote-configurations';
-import type { ObsidianLiveSyncSettings } from '@vrtmrz/livesync-commonlib/settings';
 import QRCode from 'qrcode';
 import { v7 as uuidv7 } from 'uuid';
 import type { Config } from '../config/index.js';
@@ -167,6 +165,20 @@ export interface CreatedInvite {
   expiresAt: string;
 }
 
+function couchDbProfileUri(
+  publicUrl: string,
+  username: string,
+  password: string,
+  database: string,
+): string {
+  const uri = new URL(publicUrl);
+  uri.protocol = `sls+${uri.protocol}`;
+  uri.username = username;
+  uri.password = password;
+  uri.searchParams.set('db', database);
+  return uri.toString();
+}
+
 export async function createInvite(
   deps: InviteDeps,
   input: {
@@ -214,14 +226,24 @@ export async function createInvite(
       rowId: input.vaultId,
     });
   }
-  // Match upstream's CouchDB setup generator: create and select the profile
-  // while retaining compatibility fields for established clients. The ID is
-  // stable because credentials vary per device but the selected remote does not.
-  upsertRemoteConfigurationInPlace(conf as unknown as ObsidianLiveSyncSettings, 'couchdb', {
-    id: 'livesync-manager-couchdb',
-    name: 'LiveSync Manager CouchDB',
-    activate: true,
-  });
+  // Current LiveSync setup stores an active profile as well as compatibility
+  // fields. The selected profile stays stable while its credentials differ per
+  // device. Its URI format is the CouchDB profile form upstream serialises.
+  const profileId = 'livesync-manager-couchdb';
+  conf.remoteConfigurations = {
+    [profileId]: {
+      id: profileId,
+      name: 'LiveSync Manager CouchDB',
+      uri: couchDbProfileUri(
+        deps.config.couchdb.publicUrl,
+        input.couchUsername,
+        input.couchPassword,
+        vault.couch_db_name,
+      ),
+      isEncrypted: false,
+    },
+  };
+  conf.activeConfigurationId = profileId;
   const uriPassphrase = generateInvitePassphrase();
   const setupUri = await encryptSetupUri(conf, uriPassphrase);
   const token = randomBytes(32).toString('base64url');
