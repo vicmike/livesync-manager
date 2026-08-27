@@ -7,8 +7,9 @@ under `reference/`) and `@vrtmrz/livesync-commonlib` on npm (the plugin's own
 shared library, published since 1.0). Verify against upstream when bumping
 supported plugin versions and update the line below.
 
-**Verified against: plugin 1.0.18, `@vrtmrz/livesync-commonlib` 0.1.19,
-`octagonal-wheels` 0.1.53 — 2026-08-25.**
+**Reviewed against: plugin 1.0.21, `@vrtmrz/livesync-commonlib` 0.1.19,
+`octagonal-wheels` 0.1.53 — 2026-08-26. A real-device onboarding smoke test
+remains a release gate.**
 
 ## 1. Setup URI format
 
@@ -31,6 +32,11 @@ in 1.0: the plugin migrates them into a `legacy-*` "remote configuration
 profile" on import. The multi-remote profile map (`remoteConfigurations`,
 `activeConfigurationId`) is out of scope for this app while CouchDB is the
 only supported remote.
+
+`isConfigured: true` is required. Without it, the plugin can import and
+decrypt the URI but returns to its first-run setup screen after the required
+restart. The invite test asserts that this and the connection, encryption,
+and sync-trigger fields survive URI generation.
 
 The upstream reference config (commonlib `PREFERRED_SETTING_SELF_HOSTED` plus
 the behavior flags upstream's `utils/setup/generate_setup_uri.ts` sets):

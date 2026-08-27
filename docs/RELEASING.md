@@ -40,7 +40,7 @@ Hygiene:
       ("Connect with Setup URI") and confirm a device onboards. The
       `src/crypto/setupUri.test.ts` round-trip against
       `@vrtmrz/livesync-commonlib` covers the decoder; the manual pass covers
-      the dialogs. Update the "Verified against" line in
+      the dialogs. Update the "Reviewed against" line in
       LIVESYNC_INTEGRATION.md with the plugin version and date.
 
 ## Cutting the release
