@@ -48,6 +48,21 @@ describe('compatibility with the plugin decoder (livesync-commonlib)', () => {
     expect(decoded).toMatchObject(conf);
   });
 
+  it('the plugin normalises our URI to legacy, passphrase-derived IDs', async () => {
+    // We omit idDerivation*, encryptInternalMetadata and
+    // pathNormalizationVersion on purpose (LIVESYNC_INTEGRATION.md § 1).
+    // The decoder must keep treating omission as "legacy" rather than as an
+    // error, or no device of an existing vault could import an invite.
+    const uri = await encryptSetupUri(conf, 'misty-river-42');
+    const decoded = await decodeSettingsFromSetupURI(uri, 'misty-river-42');
+    expect(decoded).toMatchObject({
+      idDerivationVersion: 0,
+      idDerivationKey: '',
+      encryptInternalMetadata: false,
+      pathNormalizationVersion: 0,
+    });
+  });
+
   it('the plugin decoder rejects our URI under the wrong passphrase', async () => {
     const uri = await encryptSetupUri(conf, 'misty-river-42');
     await expect(decodeSettingsFromSetupURI(uri, 'wrong-pass-99')).rejects.toThrowError();

@@ -7,8 +7,10 @@ under `reference/`) and `@vrtmrz/livesync-commonlib` on npm (the plugin's own
 shared library, published since 1.0). Verify against upstream when bumping
 supported plugin versions and update the line below.
 
-**Reviewed against: plugin 1.0.21, `@vrtmrz/livesync-commonlib` 0.1.19,
-`octagonal-wheels` 0.1.53 — 2026-08-26. A real-device onboarding smoke test
+**Reviewed against: plugin 1.0.39, `@vrtmrz/livesync-commonlib` 0.1.44 (the
+version 1.0.39 ships; 0.2.0, published 2026-10-23 for the next plugin
+release, has an identical setup-URI codec and remote-version check),
+`octagonal-wheels` 0.1.55 — 2026-10-23. A real-device onboarding smoke test
 remains a release gate.**
 
 ## 1. Setup URI format
@@ -26,6 +28,15 @@ versions could not decode the new format. Revisit if upstream ever deprecates
 that fallback. `src/crypto/setupUri.test.ts` round-trips our output through
 `@vrtmrz/livesync-commonlib` — the exact code a device runs — which is the
 compatibility proof this document requires.
+
+Plugin 1.0.33 added **time-bound** setup URIs (`encodeTimeBoundSetupURI`,
+mode `ephemeral`): the payload is encrypted under an HMAC of the passphrase
+and the current fixed seven-day UTC window, so the URI stops opening when the
+window ends. Upstream's generator defaults to it; its `persistent` mode is
+the plain HKDF format above. We deliberately stay on the legacy format: the
+time condition is only enforced by 1.0.33+ clients and does not revoke
+credentials, whereas our invites are single-use and expire server-side
+(SECURITY.md § Invite links), which is strictly stronger.
 
 Setup URIs carry both the compatibility `couchDB_*` fields and an explicit,
 active CouchDB profile in `remoteConfigurations`. The plugin still migrates a
@@ -80,6 +91,39 @@ Do not set `doNotUseFixedRevisionForChunks` or `gcDelay`: the former's UI
 control was removed in plugin 1.0 and upstream's generator explicitly erases
 it from URIs; the latter was a stale flyio-script value fighting the plugin
 default.
+
+**Settings introduced in plugin 1.0.33–1.0.38 that we intentionally omit.**
+The decoder and the plugin's `SetupManager` fill the defaults when a URI
+lacks them, so omission means explicit "legacy", not "unspecified"
+(`src/crypto/setupUri.test.ts` pins this):
+
+- `idDerivationVersion` / `idDerivationKey` (1.0.33, "independent ID
+  derivation"): a per-vault random 256-bit key from which chunk IDs and
+  obfuscated metadata IDs are derived, instead of from the E2EE passphrase.
+  The plugin's own wizard turns it on for new vaults and can reveal the key
+  as an `sls-id-v1:` recovery code. Every device of a vault must carry the
+  same key; the milestone tweak check hard-fails (`ID_KEY_MISMATCH`) on a
+  difference, and changing it needs the usual rebuild + fetch. Our URIs omit
+  both fields, so every device of our vaults uses version 0 (passphrase-
+  derived IDs) consistently. Adopting it would mean: generate and store the
+  key at vault creation like the E2EE passphrase, include it in every invite,
+  accept a recovery code when adopting an existing database, and require
+  plugin ≥ 1.0.33 on every device (older clients ignore the fields; the
+  remote feature generation in § 3 is what stops them from writing legacy
+  IDs into a keyed vault).
+- `encryptInternalMetadata` (1.0.33, "Encrypt internal file Properties"):
+  extends E2EE to the paths, times, sizes and chunk references of hidden-file
+  and customisation-sync documents. On for new wizard-created vaults; needs
+  `encrypt`, `usePathObfuscation` and `E2EEAlgorithm: "v2"`, which our
+  encrypted template already has. Omitted for now; same ≥ 1.0.33 floor.
+- `pathNormalizationVersion` (1.0.38, NFC path identity): opt-in, needs a
+  rebuild to change, unsupported by P2P and object storage. Omitted.
+
+`customChunkSize: 60` mirrors `PREFERRED_SETTING_SELF_HOSTED` in commonlib
+≤ 0.1.44 (plugin ≤ 1.0.39). commonlib 0.2.0 moves it to 0 and withdraws the
+Doctor recommendation; it is a "compatible, lossy" tweak that clients
+auto-align, so existing vaults are unaffected either way. Revisit when the
+plugin release that ships commonlib 0.2.0 is out.
 
 Store this as the per-vault `settings_json` template at vault creation; per-
 device invites override only the credential fields. All devices of a vault
@@ -137,6 +181,17 @@ Per vault:
    ("obsydian" is upstream's spelling; `VER = 12` in commonlib). Upstream's
    `provision.ts` does the same; plugin 1.0.6+ uses it to distinguish an
    empty-but-valid remote from a failed read.
+   Since plugin 1.0.33 this document is also the **remote feature
+   negotiation** record: generation 12 without `used_features` means "no
+   optional features in use". A client that enables independent ID
+   derivation, encrypted internal metadata or NFC path identity bumps it to
+   `version: 13` and adds `used_features: [...]`; every 1.0.33+ client then
+   refuses a remote whose features it does not know, and pre-1.0.33 clients
+   refuse generation 13 outright. Keep stamping 12: it is what old and new
+   clients alike accept for a fresh database. Never rewrite this document on
+   an adopted or restored database (backups copy it verbatim).
+   `src/services/versionMarker.test.ts` runs commonlib's own
+   `checkRemoteVersion` against our marker.
 2. Per device: create `org.couchdb.user:<username>` doc in `_users` with
    `{"type":"user","name":...,"password":...,"roles":[]}`.
 3. `PUT /vault-<slug>/_security` with all of the vault's active device users
@@ -174,24 +229,66 @@ optional server requirements check may report forbidden access when run with a
 device account; ordinary vault replication is unaffected. The manager performs
 server health checks with its separate CouchDB administrator account.
 
+Dialog wording above was re-verified against the 1.0.39 English catalog
+(`Setup.FetchRemoteConf.*`, `Setup.Doctor.*`, `Setup.Apply.*` in
+`src/common/messagesJson/en.json`). Plugin 1.0.37 fixed a security issue
+where synchronised changes could reach files outside the sync scope; tell
+users to run 1.0.37 or newer.
+
 The invite page must state, unmissably: *if this device's vault is not empty,
 LiveSync will merge the two vaults. This is very hard to undo.* This single
 warning prevents the most common catastrophic user error.
 
 ## 5. Device activity inference
 
-LiveSync keeps internal documents (milestone / node info) in the vault DB and
-tracks per-device sync state there. IDs are internal and, with path
-obfuscation, most content docs are opaque (good); we never read note content.
+LiveSync keeps its per-device bookkeeping in
+`_local/obsydian_livesync_milestone` (`MILESTONE_DOCID` in commonlib; a
+`_local` doc, so it is admin-readable and never replicated). Each client
+refreshes it when replication opens (`ensureRemoteIsCompatible` in
+commonlib's `LiveSyncDBFunctions`). Shape as of commonlib 0.1.44 / 0.2.0:
+
+```jsonc
+{
+  "type": "milestoneinfo",
+  "locked": false, "cleaned": false,
+  "accepted_nodes": ["<nodeId>"],            // nodes still allowed after a lock
+  "node_chunk_info": { "<nodeId>": { "min": 0, "max": 0 } },
+  "node_info": {
+    "<nodeId>": {
+      "device_name": "...",      // LiveSync's own "device and vault name" setting
+      "vault_name": "...",       // the Obsidian vault folder name
+      "app_version": "1.11.x",
+      "plugin_version": "1.0.39",
+      "platform": "ios",         // commonlib 0.2.0+ (plugins after 1.0.39) only
+      "last_connected": 1760000000000,  // ms epoch, refreshed at most once a minute
+      "progress": "<update_seq>"
+    }
+  },
+  "tweak_values": { "PREFERRED": {}, "<nodeId>": {} }
+}
+```
+
+`nodeId` is LiveSync's random per-install node id, not our device account;
+nothing in the document names the CouchDB user. commonlib 0.2.0 adds
+`projectJoinedDevices()` / `forgetJoinedDevice()` over this document (a
+"joined devices" view is coming to the plugin), which confirms the shape is
+upstream-supported rather than incidental. With path obfuscation, content
+docs stay opaque; we never read note content.
+
 Last-seen strategy, in order of preference:
 
-1. CouchDB `_session`/access observations per device user where the server
-   exposes them (or proxy access logs, if configured; optional).
-2. Heuristic: changes feed activity following an invite consumption maps the
-   new LiveSync node to the pending device.
+1. `node_info[*].last_connected` from the milestone document, read with the
+   admin account. It also carries `plugin_version`, so outdated clients
+   (anything below 1.0.37's security fix) can be flagged per vault.
+2. Mapping nodes to our devices is heuristic: a node first observed after an
+   invite was consumed, with no other new node in the window, belongs to
+   that device. Unmapped nodes are still worth showing at vault level.
+3. CouchDB `_session`/access observations or proxy access logs, if ever
+   configured (optional).
 
 Present as "last activity (approximate)". Do not build features that require
-this to be exact.
+this to be exact, and never write to this document: a conflicting write
+races every client's compatibility check.
 
 ## 6. Backup and restore mechanics
 
@@ -242,7 +339,9 @@ this to be exact.
 - `@vrtmrz/livesync-commonlib` on npm: the plugin's shared library
   (setup-URI encode/decode, `PREFERRED_SETTING_SELF_HOSTED`,
   `CURRENT_SETTING_VERSION`, `_local` doc ids); dev-dependency here for the
-  round-trip test
+  setup-URI round-trip and version-marker tests (`compat/API/processSetting`,
+  `compat/pouchdb/negotiation`). Pin it to the version the reviewed plugin
+  release ships (`package.json` in the plugin repo)
 - `reference/generate_setup_uri.ts` (`utils/setup/generate_setup_uri.ts`):
   canonical settings payload + encryption entry point
 - `reference/provision.ts` (`utils/couchdb/provision.ts`): canonical server
