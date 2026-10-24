@@ -342,16 +342,27 @@ races every client's compatibility check.
   re-PUTs the `_local` docs.
 - Restore is always to a new DB first (`-restored-<ts>`); destructive swap is
   a separate, confirm-token operation that locks the original DB first. Stop
-  LiveSync on every device before the swap, then have every device fetch from
-  the restored server state afterward.
+  LiveSync on every device before the swap. Afterwards every device must run
+  **Reset Synchronisation on This Device** (Settings → Maintenance →
+  "Rebuilding Operations (Local)"; the file-flag equivalent is an empty
+  `flag_fetch.md` in the vault root, picked up on the next start). Never
+  **Overwrite Server Data with This Device's Files** after a restore: it
+  rebuilds the remote from that one device and locks the others out.
+  `DEVICE_RESYNC_INSTRUCTIONS` in `src/services/vaults.ts` carries this
+  wording into the swap consequences, the unlock event and the UI.
 - Note: E2EE means backups are encrypted blobs without the vault passphrase,
   another reason the passphrase must live in the admin's password manager,
   not only in this app.
 
 ## 7. Operations this app cannot do (client-side only)
 
-- Rebuild database / fetch-everything resets: must run in a LiveSync client.
-  The app's role during recovery is: lock DB, guide the user, unlock.
+- Rebuild database / fetch-everything resets: must run in a LiveSync client
+  ("Reset Synchronisation on This Device" to adopt the server's copy;
+  "Overwrite Server Data with This Device's Files" to replace the server
+  from one device; `flag_fetch.md` / `flag_rebuild.md` in the vault root
+  schedule the same on next start, upstream `docs/recovery.md`). The app's
+  role during recovery is: lock DB, guide the user with the exact menu
+  wording, unlock.
 - E2EE passphrase rotation: requires client-side re-encryption/rebuild.
   Out of scope for v1 (SECURITY.md).
 - Conflict resolution: explicitly a non-goal (SPEC.md).

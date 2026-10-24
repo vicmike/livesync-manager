@@ -11,6 +11,7 @@ import {
   membersSecurity,
   NO_MEMBERS_SECURITY,
   VaultError,
+  DEVICE_RESYNC_INSTRUCTIONS,
 } from './vaults.js';
 
 // The CouchDB operations restore needs; satisfied by CouchClient.
@@ -115,9 +116,8 @@ export async function restoreSwapConsequences(
       (backup.docCount !== null ? ` (${backup.docCount.toLocaleString()} docs)` : ''),
     'The vault is locked during the swap; a pre-swap safety snapshot is taken first and kept',
     'Stop LiveSync on every device before continuing. A device with stale encryption state must not write during a restore.',
-    'Afterwards every device must fetch the vault from the server again ' +
-      '(in the LiveSync plugin: fetch from the remote database). ' +
-      'Replication checkpoints do not survive a swap',
+    `Afterwards every device must re-fetch the vault; replication checkpoints do not survive ` +
+      `a swap. ${DEVICE_RESYNC_INSTRUCTIONS}`,
   ];
 }
 
@@ -199,9 +199,7 @@ export async function restoreSwap(
   recordEvent(deps.db, {
     level: 'warn',
     actor: 'admin',
-    message:
-      `Restored vault ${vault.name} from ${backup.location}: every device must now ` +
-      `fetch the vault from the server again`,
+    message: `Restored vault ${vault.name} from ${backup.location}. ${DEVICE_RESYNC_INSTRUCTIONS}`,
     vaultId: vault.id,
     detail: { backupId, preSwapBackup: preSwap },
   });

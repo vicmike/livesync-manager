@@ -198,6 +198,18 @@ export function getVaultIdDerivationKey(
   });
 }
 
+// What every device must do after the server-side copy of a vault changed
+// under it (restore swap, unlock after a restore). Wording is the plugin's
+// own menu item (Settings → Maintenance → "Rebuilding Operations (Local)"),
+// 1.0.39 English catalog; the flag file is upstream's documented
+// equivalent (docs/recovery.md). The opposite action would push that
+// device's stale copy over the server, so it is named and ruled out.
+export const DEVICE_RESYNC_INSTRUCTIONS =
+  'On every device, open the LiveSync settings → Maintenance and choose ' +
+  '"Reset Synchronisation on This Device" (or put an empty file named flag_fetch.md in the ' +
+  'vault root and restart Obsidian). Never choose "Overwrite Server Data with This Device\'s ' +
+  "Files\": that would replace the server's vault with that device's copy.";
+
 export class VaultError extends Error {
   constructor(
     message: string,
@@ -581,7 +593,8 @@ export async function setVaultLocked(
     actor: 'admin',
     message: locked
       ? `Locked vault ${vault.name}: devices can no longer read or write`
-      : `Unlocked vault ${vault.name}: device access restored`,
+      : `Unlocked vault ${vault.name}: device access restored. If the server-side data changed ` +
+        `while it was locked, ${DEVICE_RESYNC_INSTRUCTIONS}`,
     vaultId: id,
   });
   return getVault(deps.db, id);

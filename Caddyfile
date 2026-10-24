@@ -5,6 +5,21 @@
 	reverse_proxy app:8080
 }
 
+# CouchDB is on the devices' sync path (docs/DEPLOYMENT.md § Reverse proxy
+# in front of CouchDB). CouchDB handles CORS itself: do not add CORS headers
+# here and do not intercept OPTIONS requests. Mount it at the root of its
+# own hostname, never under a path.
 {$COUCHDB_DOMAIN} {
-	reverse_proxy couchdb:5984
+	# At least couchdb/max_document_size (50 MB), or large notes fail with 413.
+	request_body {
+		max_size 50MB
+	}
+	reverse_proxy couchdb:5984 {
+		# Replication streams responses; buffering makes the first fetch
+		# appear to hang. Caddy sets no response timeout by default; keep it
+		# that way (long-lived _changes requests are normal).
+		flush_interval -1
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
 }

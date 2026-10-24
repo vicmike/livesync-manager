@@ -33,7 +33,7 @@ reverse proxy (Authentik/Authelia style). Disabled by default.
 | PATCH| `/vaults/:id` | rename, archive/unarchive |
 | DELETE | `/vaults/:id` | destructive (see below) |
 | POST | `/vaults/:id/lock` | emergency brake: `_security` swaps to the admin-only sentinel, no device can read or write |
-| POST | `/vaults/:id/unlock` | rebuilds `_security` members from the non-revoked device list (legacy members are not restored) |
+| POST | `/vaults/:id/unlock` | rebuilds `_security` members from the non-revoked device list (legacy members are not restored). If the data changed while locked, every device must run **Reset Synchronisation on This Device** (LiveSync settings → Maintenance), never **Overwrite Server Data with This Device's Files**; the audit event says so |
 | POST | `/vaults/:id/members/remove` | remove a legacy `_security` member (confirm-token flow): the last step of migrating an adopted vault to per-device users |
 
 ## Devices & onboarding
@@ -80,7 +80,7 @@ Rate-limit `/invite/*` aggressively; constant-time token compare against
 | POST | `/backups/:id/verify` | count + spot-check verification |
 | GET  | `/backups/:id/restore/preview` | snapshot doc count/size and the `-restored-<ts>` target name |
 | POST | `/backups/:id/restore` | materializes `-restored-<ts>` DB (non-destructive; adopt it via `/vaults/connect` to use it) |
-| POST | `/backups/:id/restore/swap` | destructive swap: confirm-token flow with `devicesStopped: true`. Locks the vault, keeps a pre-swap snapshot, replaces the live DB, restores device access. Stop LiveSync on every device before confirming; devices must re-fetch afterward. On a mid-swap failure the vault stays locked with both snapshots intact. |
+| POST | `/backups/:id/restore/swap` | destructive swap: confirm-token flow with `devicesStopped: true`. Locks the vault, keeps a pre-swap snapshot, replaces the live DB, restores device access. Stop LiveSync on every device before confirming; afterwards every device runs **Reset Synchronisation on This Device** (or gets a `flag_fetch.md` in its vault root), never **Overwrite Server Data with This Device's Files**. The `consequences` list and the audit event spell this out. On a mid-swap failure the vault stays locked with both snapshots intact. |
 | DELETE | `/backups/:id` | confirm-token flow |
 
 ## Events

@@ -103,11 +103,53 @@ docker run -d --name livesync-manager \
 ```
 
 Put a TLS-terminating proxy (Caddy, Traefik, nginx) in front; do not expose
-the app port directly.
+the app port directly. The CouchDB hop has its own rules, below.
 
 Keep `/data` on a local filesystem (named volume or bind mount to local
 disk), never NFS/SMB; SQLite's locking and WAL shared-memory file do not
 survive network filesystems.
+
+## Reverse proxy in front of CouchDB
+
+Devices talk to CouchDB through `COUCHDB_PUBLIC_URL`, so the proxy on that
+hostname is part of the sync path and is where most upstream support
+threads end up. The checklist (upstream: `docs/setup_own_server.md`,
+`docs/troubleshooting.md`, and the `Caddyfile` shipped with the plugin's own
+Docker setup):
+
+- **TLS with an OS-trusted certificate.** iOS and Android reject self-signed
+  or private-CA certificates silently; use a public CA (Let's Encrypt) or
+  make sure the device trusts the CA at the OS level.
+- **Do not add CORS headers and do not answer `OPTIONS` at the proxy.**
+  CouchDB handles CORS itself (`cors/origins` with `app://obsidian.md` and
+  `capacitor://localhost`, set by "Apply recommended configuration").
+  Proxy-added headers duplicate CouchDB's and browsers/WebViews reject the
+  response.
+- **No redirects on the CouchDB hostname.** Mount CouchDB at the root of its
+  own hostname (`https://<couchdb-host>/`), not under a path, and do not
+  redirect `http` → `https` with a different path; the plugin's connection
+  test passes a redirect but replication then fails.
+- **Request body limit of at least 50 MB**, matching CouchDB's
+  `couchdb/max_document_size` (`client_max_body_size 50M;` in nginx; Caddy
+  `request_body { max_size 50MB }`). Too small shows up as `413` on large
+  notes or attachments.
+- **Buffering off** (`proxy_buffering off;` in nginx; `flush_interval -1`
+  in Caddy). With buffering on, the plugin's initial fetch appears to stall
+  indefinitely.
+- **Long read timeouts.** Replication holds connections open; a 60–100 s
+  proxy timeout breaks it. Cloudflare's fixed 100 s limit produces `524`
+  responses that also lack CORS headers; if CouchDB must sit behind
+  Cloudflare, enable the plugin's **Use timeouts instead of heartbeats**
+  (advanced CouchDB settings) or the Request API option as upstream
+  recommends, and prefer a direct hostname otherwise.
+- **Forward `Host` and `X-Forwarded-Proto`** so CouchDB's own absolute URLs
+  (where it emits them) stay `https`.
+
+The bundled `Caddyfile` (compose `proxy` profile) applies these for the
+CouchDB hostname. The app's "Check server configuration" verifies CouchDB's
+settings through `COUCHDB_ADMIN_URL`; it does not exercise the proxy, so
+after changing it, run the plugin's own **Check database configuration**
+from a device once.
 
 ## Backing up the app itself
 

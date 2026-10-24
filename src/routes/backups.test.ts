@@ -177,7 +177,7 @@ describe('restore over HTTP', () => {
       headers: { cookie },
     });
     expect((dry.json() as { consequences: string[] }).consequences.join(' ')).toMatch(
-      /Stop LiveSync on every device.*fetch the vault/,
+      /Stop LiveSync on every device.*Reset Synchronisation on This Device/,
     );
     const missingAcknowledgement = await server.inject({
       method: 'POST',

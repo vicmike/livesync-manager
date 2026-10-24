@@ -515,8 +515,7 @@ function Backups(props: { vaultId: string; backups: Backup[]; onChange: () => vo
               setSwapping(null);
               setNotice(
                 `Vault restored (${result.docCount} docs). Pre-swap snapshot kept as ` +
-                  `${result.preSwapBackup}. Every device must now fetch the vault from the ` +
-                  'server again (in the LiveSync plugin: fetch from the remote database).',
+                  `${result.preSwapBackup}. ${DEVICE_RESYNC_INSTRUCTIONS}`,
               );
               props.onChange();
             })
@@ -624,14 +623,31 @@ function DangerZone(props: { vault: VaultDetailData; onChange: () => void }) {
   );
 }
 
+// Mirrors DEVICE_RESYNC_INSTRUCTIONS in src/services/vaults.ts (the
+// plugin's own menu wording, 1.0.39).
+const DEVICE_RESYNC_INSTRUCTIONS =
+  'On every device, open the LiveSync settings → Maintenance and choose ' +
+  '"Reset Synchronisation on This Device" (or put an empty file named flag_fetch.md in the ' +
+  'vault root and restart Obsidian). Never choose "Overwrite Server Data with This Device\'s ' +
+  "Files\": that would replace the server's vault with that device's copy.";
+
 function LockButton(props: { vault: VaultDetailData; onChange: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   async function toggle() {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      await api.post(`/vaults/${props.vault.id}/${props.vault.locked ? 'unlock' : 'lock'}`);
+      const unlocking = props.vault.locked;
+      await api.post(`/vaults/${props.vault.id}/${unlocking ? 'unlock' : 'lock'}`);
+      if (unlocking) {
+        setNotice(
+          `Device access restored. If the vault's data changed while it was locked ` +
+            `(for example after a restore), ${DEVICE_RESYNC_INSTRUCTIONS}`,
+        );
+      }
       props.onChange();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
@@ -650,6 +666,7 @@ function LockButton(props: { vault: VaultDetailData; onChange: () => void }) {
         {busy ? 'Working...' : props.vault.locked ? 'Unlock vault' : 'Lock vault'}
       </button>
       <ErrorLine error={error} />
+      {notice && <p className="muted">{notice}</p>}
     </>
   );
 }
