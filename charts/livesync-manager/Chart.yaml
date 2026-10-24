@@ -2,8 +2,8 @@ apiVersion: v2
 name: livesync-manager
 description: Self-hosted management console for Obsidian LiveSync and CouchDB.
 type: application
-version: 0.1.1
-appVersion: 0.4.0
+version: 0.1.2
+appVersion: 0.4.1
 home: https://github.com/vicmike/livesync-manager
 sources:
   - https://github.com/vicmike/livesync-manager

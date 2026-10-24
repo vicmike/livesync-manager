@@ -182,7 +182,7 @@ helm upgrade --install livesync-manager charts/livesync-manager \
   --namespace livesync --create-namespace \
   --set existingSecret=livesync-manager-secrets \
   --set image.repository=registry.example.com/livesync-manager \
-  --set image.tag=0.4.0 \
+  --set image.tag=0.4.1 \
   --set config.couchdb.adminUrl=http://couchdb.couchdb.svc.cluster.local:5984 \
   --set config.couchdb.publicUrl=https://couchdb.example.com \
   --set config.publicBaseUrl=https://livesync.example.com
