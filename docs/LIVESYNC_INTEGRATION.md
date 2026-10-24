@@ -209,37 +209,56 @@ Locking a vault (emergency brake, mirrors LiveSync's "lock remote database"
 recovery guidance): swap `_security.members` to an empty sentinel role so no
 device can read/write, while the app admin can still operate.
 
-## 4. Device onboarding flow (what the user experiences, plugin 1.0.13+)
+## 4. Device onboarding flow (what the user experiences, plugin 1.0.39)
 
 1. Dashboard → vault → "Add device" → name it → invite URL/QR appears.
 2. New device: install Obsidian + Self-hosted LiveSync in an **empty vault**,
-   open the invite page, tap the deep link (or scan QR on another screen; or
-   choose **"Connect with Setup URI"** in the plugin's setup notice and paste
-   the URI), enter the invite passphrase shown on the page.
-3. The 1.0 setup wizard then asks, in order:
-   - **"Fetch configuration from remote database?"** — joining devices answer
-     *"Yes, please fetch the configuration"* (adopts the vault's stored tweak
-     values); the very first device answers *"No, please use the settings in
-     the URI"*.
-   - **"Do you want to consult the doctor?"** — *"No, please use the settings
-     in the URI as is"* (our template is current).
-   - **"Apply new configuration"** — **"Apply and Fetch"** for a new/empty
-     device. *"Apply and Merge"* is only for a device that already holds the
-     vault's files; *"Apply and Rebuild"* overwrites the server for every
-     other device and must never be chosen while joining.
-4. Vault downloads. Device flips pending → active when we first observe its
-   credentials authenticate (or the user hits "I've imported it").
+   open the invite page, tap the deep link (or scan the QR code and open the
+   copied link). The link opens the plugin's **"Enter Setup URI"** dialog
+   with the URI filled in; the user types the invite passphrase and chooses
+   **"Test Settings and Continue"**.
+3. The deep link enters the wizard with an unknown user mode
+   (`setupProtocol.ts` → `onUseSetupURI(UserMode.Unknown)`), so after the
+   test the plugin shows **"Mostly Complete: Decision Required"** with three
+   choices: *"⚠️ Initialise or overwrite the remote"* (first device of a
+   brand-new vault only; it rebuilds the server from this device), **"🔗 Join
+   this device"** (every additional device), *"⚙️ Apply settings only
+   (advanced)"* (a device that already holds the vault's data).
+4. Joining: **"Setup Complete: Preparing to Fetch Synchronisation Data"** →
+   **"Restart and Fetch Data"**. After the restart, Fast Setup
+   (`redFlag.simpleFetch.ts`, upstream `docs/tips/fast-setup.md`) asks
+   **"Data retrieval scheduled"** → *"Overwrite all with remote files"* for
+   an empty vault (*"Compare time and take newer"* is for a vault with local
+   work) → *"How to handle extra existing local files?"* → *"Keep local files
+   even if not on remote"* (default; either is fine for an empty vault).
+   A **"All optional features are disabled"** acknowledgement may follow.
+5. Alternative entry when the link does not open the plugin: the **"Welcome
+   to Self-hosted LiveSync"** notice → *"I am adding a device to an existing
+   synchronisation setup"* → *"Use a Setup URI (Recommended)"* → paste. This
+   path knows the user mode and skips step 3, going straight to step 4.
+6. Vault downloads. Device flips pending → active when the invite page's
+   "I've imported it" button is used, when the admin marks it connected, or
+   (§ 5) when a new LiveSync client is attributed to it.
+
+The pre-1.0.3x dialogs ("Fetch configuration from remote database?", "Do you
+want to consult the doctor?", "Apply and Fetch") still exist in the message
+catalog but are not reachable from the setup-URI path in 1.0.39
+(`SetupManager.ts` wires `UseSetupURI → OutroAskUserMode → OutroExistingUser`
+only). Do not quote them; when re-verifying wording, check the Svelte dialogs
+under `src/modules/features/SetupWizard/dialogs/` and `redFlag.simpleFetch.ts`,
+not just `en.json`. Verified against 1.0.39 source on 2026-10-23; a live
+device pass remains the release gate.
 
 Device accounts are deliberately not CouchDB server administrators. LiveSync's
 optional server requirements check may report forbidden access when run with a
 device account; ordinary vault replication is unaffected. The manager performs
 server health checks with its separate CouchDB administrator account.
 
-Dialog wording above was re-verified against the 1.0.39 English catalog
-(`Setup.FetchRemoteConf.*`, `Setup.Doctor.*`, `Setup.Apply.*` in
-`src/common/messagesJson/en.json`). Plugin 1.0.37 fixed a security issue
-where synchronised changes could reach files outside the sync scope; tell
-users to run 1.0.37 or newer.
+The invite page asks for plugin **1.0.37 or newer** for every vault
+(`src/services/pluginVersion.ts`): 1.0.37 fixed a security issue where
+synchronised changes could reach files outside the sync scope, and it is above
+the 1.0.33 floor that keyed vaults (§ 1) need. The import flow itself works
+from 1.0.13.
 
 The invite page must state, unmissably: *if this device's vault is not empty,
 LiveSync will merge the two vaults. This is very hard to undo.* This single

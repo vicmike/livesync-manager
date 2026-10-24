@@ -117,11 +117,13 @@ export function ConfirmDialog(props: {
 export function InviteReveal(props: {
   deviceName: string;
   invite: Invite;
-  /** Oldest plugin that can import this invite; 1.0.33 for vaults with an independent ID key. */
+  /** Plugin version the invite asks for (one floor for every vault). */
   minimumPluginVersion?: string;
+  /** The vault uses an independent ID key (plugin 1.0.33+). */
+  idDerivation?: boolean;
   onClose: () => void;
 }) {
-  const minimum = props.minimumPluginVersion ?? '1.0.13';
+  const minimum = props.minimumPluginVersion ?? '1.0.37';
   return (
     <div className="overlay">
       <div className="dialog">
@@ -129,7 +131,8 @@ export function InviteReveal(props: {
         <p>
           Scan with the new device's camera, or open the link on it. The Obsidian vault on that
           device must be <strong>empty</strong>. Use Self-hosted LiveSync {minimum} or newer
-          {minimum !== '1.0.13' && ' (this vault uses an independent ID key)'}.
+          {props.idDerivation && ' (this vault uses an independent ID key)'}. The invite page walks
+          through the plugin's dialogs step by step.
         </p>
         <div className="invite-qr" dangerouslySetInnerHTML={{ __html: props.invite.urlQr }} />
         <p className="reveal">

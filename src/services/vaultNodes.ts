@@ -14,12 +14,8 @@ export const MILESTONE_DOC_ID = '_local/obsydian_livesync_milestone';
 /** Pseudo node under which LiveSync keeps the vault-wide preferred tweak values. */
 const PREFERRED_NODE_ID = 'PREFERRED';
 
-/**
- * Plugin 1.0.37 (2026-10-16) fixed a security issue where synchronised changes
- * could reach files outside the intended synchronisation scope. Clients
- * below it are flagged as outdated in the UI and in vault health.
- */
-export const MIN_RECOMMENDED_PLUGIN_VERSION = '1.0.37';
+import { MIN_RECOMMENDED_PLUGIN_VERSION } from './pluginVersion.js';
+export { MIN_RECOMMENDED_PLUGIN_VERSION };
 
 /**
  * A client first observed within this long after a device's onboarding was

@@ -95,7 +95,7 @@ describe('createInvite', () => {
       encryptInternalMetadata: true,
     });
     expect(row.setup_uri_enc.toString('latin1')).not.toContain(conf.idDerivationKey as string);
-    expect(page.minimumPluginVersion).toBe('1.0.33');
+    expect(page.minimumPluginVersion).toBe('1.0.37');
   });
 
   it('mints legacy URIs for vaults without an ID key', async () => {
@@ -122,7 +122,7 @@ describe('createInvite', () => {
     expect(conf).not.toHaveProperty('idDerivationKey');
     expect(conf).not.toHaveProperty('idDerivationVersion');
     expect(conf).not.toHaveProperty('encryptInternalMetadata');
-    expect(page.minimumPluginVersion).toBe('1.0.13');
+    expect(page.minimumPluginVersion).toBe('1.0.37');
   });
 
   it("replaces a device's previous pending invite", async () => {
@@ -210,6 +210,6 @@ describe('unencrypted vaults', () => {
     expect(conf.usePathObfuscation).toBe(false);
     expect('passphrase' in conf).toBe(false);
     expect('idDerivationKey' in conf).toBe(false);
-    expect(page.minimumPluginVersion).toBe('1.0.13');
+    expect(page.minimumPluginVersion).toBe('1.0.37');
   });
 });

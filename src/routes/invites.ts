@@ -48,38 +48,43 @@ function renderInvitePage(invite: InvitePage, qrSvg: string, consumePath: string
 <strong>empty</strong> (a brand-new vault). If it already contains notes, LiveSync will
 <strong>merge</strong> them with the vault you are joining. This is very hard to undo.
 </div>
+<p>Use Self-hosted LiveSync version ${escapeHtml(invite.minimumPluginVersion)} or newer
+(older releases have a known synchronisation-scope security issue).${
+      invite.idDerivation
+        ? ' This vault also uses an independent ID key, which plugin versions before 1.0.33 cannot apply.'
+        : ''
+    } Update the plugin on this device first if needed.</p>
 <ol>
 <li>On the new device, create an empty vault in Obsidian and install the
 <em>Self-hosted LiveSync</em> community plugin.</li>
-<li>Open this page on that device and tap the button below, or scan the QR code
-with it and open the copied link. (If the link does not open the plugin, choose
-<em>Connect with Setup URI</em> in the plugin's setup notice and paste it.)</li>
-<li>When the plugin asks, paste or confirm the Setup URI and enter the invite
-passphrase shown below.</li>
+<li>Open this page on that device and tap <strong>Set up this device</strong>
+below, or scan the QR code with it and open the copied link.</li>
+<li>In the <em>Enter Setup URI</em> dialog the link fills in the Setup URI; type
+the invite passphrase shown below and choose <strong>Test Settings and
+Continue</strong>.</li>
+<li>At <em>Mostly Complete: Decision Required</em>, choose
+<strong>🔗 Join this device</strong>. (<em>Initialise or overwrite the remote</em>
+is only for the very first device of a brand-new vault: it replaces everything
+on the server. <em>Apply settings only</em> is for a device that already holds
+this vault's data.)</li>
+<li>At <em>Setup Complete: Preparing to Fetch Synchronisation Data</em>, choose
+<strong>Restart and Fetch Data</strong> and let Obsidian restart.</li>
+<li>After the restart, at <em>Data retrieval scheduled</em>, choose
+<strong>Overwrite all with remote files</strong>, then
+<strong>Keep local files even if not on remote</strong>. (For an empty vault
+either second choice is fine.)</li>
+<li>Acknowledge <em>All optional features are disabled</em> if it appears, then
+let the vault finish downloading. Hidden-file sync and other optional features
+can be turned on later in the plugin's settings.</li>
 </ol>
-<p>Use Self-hosted LiveSync version ${escapeHtml(invite.minimumPluginVersion)} or newer.${
-      invite.minimumPluginVersion === '1.0.13'
-        ? ''
-        : ' This vault uses an independent ID key, which older plugin versions cannot apply; update the plugin on this device first.'
-    } The plugin then walks through a few dialogs. Answer
-them like this:</p>
-<ul>
-<li><em>Fetch configuration from remote database?</em> If other devices already
-sync this vault, choose <em>Yes, please fetch the configuration</em>; on the
-very first device choose <em>No, please use the settings in the URI</em>.</li>
-<li><em>Do you want to consult the doctor?</em> Choose
-<em>No, please use the settings in the URI as is</em>, so the settings from this
-link are kept.</li>
-<li><em>Apply new configuration</em>: choose <strong>Apply and Fetch</strong>.
-(<em>Apply and Merge</em> is only for a device that already holds this vault's
-notes; never choose <em>Apply and Rebuild</em> when joining, it overwrites the
-server for every other device.)</li>
-<li>Hidden-file sync and other optional features: your choice, and you can
-change them later in the plugin's settings.</li>
-</ul>
+<p>If the link does not open the plugin: tap the <em>Welcome to Self-hosted
+LiveSync</em> notice in Obsidian, choose <em>I am adding a device to an existing
+synchronisation setup</em>, then <em>Use a Setup URI (Recommended)</em>, and
+paste the link from the QR code. That path skips the <em>Decision Required</em>
+step and goes straight to <em>Restart and Fetch Data</em>.</p>
 <p>The device account can sync this vault, but it cannot inspect or change
-server-wide CouchDB settings. Use this manager's server health check for that.</p>
-<p>Then let the vault finish downloading.</p>
+server-wide CouchDB settings (the plugin's server check may report that as
+forbidden; it is expected). Use this manager's server health check for that.</p>
 <p style="text-align:center"><a class="button" href="${invite.setupUri}">Set up this device</a></p>
 ${qrSvg.replace('<svg', '<svg class="qr"')}
 <p>Invite passphrase (needed once, on the device):</p>

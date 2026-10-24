@@ -7,6 +7,7 @@ import { encryptSetupUri } from '../crypto/setupUri.js';
 import type { AppDatabase } from '../db/index.js';
 import { recordEvent } from './events.js';
 import { getVaultIdDerivationKey } from './vaults.js';
+import { MIN_RECOMMENDED_PLUGIN_VERSION } from './pluginVersion.js';
 
 // Invite-passphrase wordlists, from reference/generate_setupuri.ts
 // (vrtmrz/obsidian-livesync, MIT). The passphrase is typed by a human on
@@ -314,16 +315,20 @@ export interface InvitePage {
   setupUri: string;
   uriPassphrase: string;
   expiresAt: string;
-  /** Oldest plugin that can import this invite (LIVESYNC_INTEGRATION.md § 1). */
+  /** Plugin version the page asks for (LIVESYNC_INTEGRATION.md § 1, § 4). */
   minimumPluginVersion: string;
+  /** The vault uses an independent ID key, which older plugins cannot apply. */
+  idDerivation: boolean;
 }
 
-/** Oldest Self-hosted LiveSync release that imports our invites. */
-export function minimumPluginVersion(vault: { idDerivation: boolean }): string {
-  // 1.0.13: the setup-URI import flow we document. 1.0.33: independent ID
-  // derivation; an older plugin would ignore the key and write legacy IDs
-  // into a keyed vault.
-  return vault.idDerivation ? '1.0.33' : '1.0.13';
+/**
+ * Self-hosted LiveSync version the invite page asks for. One floor for every
+ * vault: 1.0.37 carries upstream's sync-scope security fix and is above the
+ * 1.0.33 independent-ID-derivation floor keyed vaults need (an older plugin
+ * would ignore the key and write legacy IDs into a keyed vault).
+ */
+export function minimumPluginVersion(): string {
+  return MIN_RECOMMENDED_PLUGIN_VERSION;
 }
 
 interface InviteRow {
@@ -377,9 +382,8 @@ export function findInvite(deps: InviteDeps, token: string): InvitePage | undefi
       rowId: row.id,
     }),
     expiresAt: row.expires_at,
-    minimumPluginVersion: minimumPluginVersion({
-      idDerivation: (row.vault_id_key_len ?? 0) > 0,
-    }),
+    minimumPluginVersion: minimumPluginVersion(),
+    idDerivation: (row.vault_id_key_len ?? 0) > 0,
   };
 }
 

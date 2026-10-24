@@ -202,7 +202,7 @@ function Devices(props: {
         <InviteReveal
           deviceName={reveal.deviceName}
           invite={reveal.invite}
-          minimumPluginVersion={props.idDerivation ? '1.0.33' : '1.0.13'}
+          idDerivation={props.idDerivation}
           onClose={() => setReveal(null)}
         />
       )}

@@ -33,10 +33,17 @@ describe('invite page', () => {
     expect(res.body).toContain('obsidian://setuplivesync?settings=');
     expect(res.body).toContain('<svg');
     expect(res.body).toContain(invite.uriPassphrase);
-    // Confirmation-dialog guidance for the plugin 1.0 setup flow: the
-    // non-obvious joining-device answer and the dangerous one to avoid.
-    expect(res.body).toContain('Apply and Fetch');
-    expect(res.body).toContain('never choose <em>Apply and Rebuild</em>');
+    // Dialog guidance for the plugin 1.0.39 setup-URI flow
+    // (LIVESYNC_INTEGRATION.md § 4): the joining-device choice, the restart
+    // step, and the dangerous choice named so it can be avoided. The
+    // pre-1.0.3x dialog names must not reappear.
+    expect(res.body).toContain('Join this device');
+    expect(res.body).toContain('Restart and Fetch Data');
+    expect(res.body).toContain('Overwrite all with remote files');
+    expect(res.body).toContain('Initialise or overwrite the remote');
+    expect(res.body).toContain('1.0.37 or newer');
+    expect(res.body).not.toContain('Apply and Fetch');
+    expect(res.body).not.toContain('consult the doctor');
     await server.close();
   });
 

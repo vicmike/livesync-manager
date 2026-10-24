@@ -36,8 +36,9 @@ Hygiene:
 - [ ] `reference/` attribution intact; dependencies pinned (`.npmrc`
       save-exact), including `octagonal-wheels`
 - [ ] Supported LiveSync plugin version range checked against a current
-      plugin release: decrypt a freshly minted setup URI in the plugin
-      ("Connect with Setup URI") and confirm a device onboards. The
+      plugin release: open a freshly minted invite link in the plugin (the
+      "Enter Setup URI" dialog, then "Join this device" → "Restart and Fetch
+      Data") and confirm a device onboards. The
       `src/crypto/setupUri.test.ts` round-trip against
       `@vrtmrz/livesync-commonlib` covers the decoder; the manual pass covers
       the dialogs. Update the "Reviewed against" line in
