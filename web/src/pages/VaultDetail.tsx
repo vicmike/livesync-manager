@@ -11,6 +11,8 @@ import {
   type SwapResult,
   type VaultDetail as VaultDetailData,
   type VaultHealth,
+  type VaultNode,
+  type VaultNodes,
 } from '../api.js';
 import {
   Badge,
@@ -126,6 +128,7 @@ function Devices(props: {
               <th>Status</th>
               <th>Access</th>
               <th>Connection confirmed</th>
+              <th>Last seen (approx.)</th>
               <th></th>
             </tr>
           </thead>
@@ -149,6 +152,13 @@ function Devices(props: {
                     : d.firstConnected
                       ? timeAgo(d.firstConnected)
                       : 'not confirmed'}
+                </td>
+                <td className="muted">
+                  {d.status === 'revoked'
+                    ? '-'
+                    : d.lastSeen
+                      ? timeAgo(d.lastSeen)
+                      : 'no activity seen'}
                 </td>
                 <td className="row-actions">
                   {d.status !== 'revoked' && (
@@ -182,9 +192,10 @@ function Devices(props: {
         </table>
       )}
       <p className="muted">
-        The manager can verify whether a device account is configured, but CouchDB does not expose a
-        reliable live per-device sync signal. “Connection confirmed” records onboarding, not recent
-        sync activity.
+        “Connection confirmed” records onboarding. “Last seen” comes from the timestamp a device's
+        LiveSync client writes into the vault database when it connects (refreshed about once a
+        minute while syncing) and only applies once the client is linked to the device under
+        LiveSync clients below. Treat it as approximate.
       </p>
       <ErrorLine error={error} />
       {reveal && (
@@ -211,6 +222,142 @@ function Devices(props: {
           }
         />
       )}
+    </Card>
+  );
+}
+
+function Clients(props: { nodes: VaultNodes | null; devices: Device[]; onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selection, setSelection] = useState<Record<string, string>>({});
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function link(node: VaultNode, deviceId: string) {
+    void run(async () => {
+      await api.put(`/devices/${deviceId}/node`, { nodeId: node.nodeId });
+      props.onChange();
+    });
+  }
+
+  function unlink(node: VaultNode) {
+    if (!node.device) return;
+    const deviceId = node.device.id;
+    void run(async () => {
+      await api.put(`/devices/${deviceId}/node`, { nodeId: null });
+      props.onChange();
+    });
+  }
+
+  const unlinkedDevices = props.devices.filter(
+    (d) => d.status !== 'revoked' && !props.nodes?.nodes.some((n) => n.device?.id === d.id),
+  );
+  const nodes = props.nodes;
+
+  return (
+    <Card title="LiveSync clients">
+      {!nodes ? (
+        <p className="muted">Loading…</p>
+      ) : nodes.milestone === 'absent' && nodes.nodes.length === 0 ? (
+        <p className="muted">
+          No LiveSync client has connected to this vault yet. Clients appear here after their first
+          sync.
+        </p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Plugin</th>
+              <th>Platform</th>
+              <th>Last connected (approx.)</th>
+              <th>Device</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {nodes.nodes.map((n) => (
+              <tr key={n.nodeId}>
+                <td>
+                  {n.label}
+                  {n.vaultName && <span className="muted"> · {n.vaultName}</span>}
+                  {!n.accepted && (
+                    <>
+                      {' '}
+                      <Badge kind="muted">not accepted</Badge>
+                    </>
+                  )}
+                </td>
+                <td>
+                  {n.pluginVersion ?? <span className="muted">unknown</span>}
+                  {n.outdated && (
+                    <>
+                      {' '}
+                      <Badge kind="warn">outdated</Badge>
+                    </>
+                  )}
+                </td>
+                <td className="muted">{n.platform ?? '-'}</td>
+                <td className="muted">{timeAgo(n.lastConnected)}</td>
+                <td>
+                  {n.device ? (
+                    n.device.name
+                  ) : unlinkedDevices.length === 0 ? (
+                    <span className="muted">not linked</span>
+                  ) : (
+                    <select
+                      value={selection[n.nodeId] ?? ''}
+                      onChange={(e) => setSelection((s) => ({ ...s, [n.nodeId]: e.target.value }))}
+                    >
+                      <option value="">link to device…</option>
+                      {unlinkedDevices.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </td>
+                <td className="row-actions">
+                  {n.device ? (
+                    <button className="link" disabled={busy} onClick={() => unlink(n)}>
+                      unlink
+                    </button>
+                  ) : (
+                    selection[n.nodeId] && (
+                      <button
+                        className="link"
+                        disabled={busy}
+                        onClick={() => link(n, selection[n.nodeId]!)}
+                      >
+                        link
+                      </button>
+                    )
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {nodes?.error && <ErrorLine error={`Could not refresh the client list: ${nodes.error}`} />}
+      <p className="muted">
+        Read from the bookkeeping document LiveSync keeps in the vault database. Clients are
+        identified by LiveSync's own ids, so they are linked to devices by onboarding time when
+        unambiguous, or by hand here. Plugins older than{' '}
+        {nodes?.minRecommendedPluginVersion ?? '1.0.37'} miss a security fix and are flagged.
+      </p>
+      <ErrorLine error={error} />
     </Card>
   );
 }
@@ -590,6 +737,7 @@ export function VaultDetailPage(props: { vaultId: string }) {
   const [vault, setVault] = useState<VaultDetailData | null>(null);
   const [health, setHealth] = useState<VaultHealth | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [nodes, setNodes] = useState<VaultNodes | null>(null);
   const [backups, setBackups] = useState<Backup[]>([]);
   const [events, setEvents] = useState<EventEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -597,16 +745,22 @@ export function VaultDetailPage(props: { vaultId: string }) {
   const refresh = useCallback(() => {
     void (async () => {
       try {
-        const [vaultRes, healthRes, deviceRes, backupRes, eventRes] = await Promise.all([
+        // Health refreshes the client observations (and may link clients to
+        // devices), so fetch it before the device and client lists.
+        const [vaultRes, healthRes] = await Promise.all([
           api.get<VaultDetailData>(`/vaults/${props.vaultId}`),
           api.get<VaultHealth>(`/vaults/${props.vaultId}/health`),
+        ]);
+        const [deviceRes, nodeRes, backupRes, eventRes] = await Promise.all([
           api.get<Device[]>(`/vaults/${props.vaultId}/devices`),
+          api.get<VaultNodes>(`/vaults/${props.vaultId}/nodes`),
           api.get<Backup[]>(`/vaults/${props.vaultId}/backups`),
           api.get<EventEntry[]>(`/events?vaultId=${props.vaultId}&limit=15`),
         ]);
         setVault(vaultRes);
         setHealth(healthRes);
         setDevices(deviceRes);
+        setNodes(nodeRes);
         setBackups(backupRes);
         setEvents(eventRes);
         setError(null);
@@ -680,6 +834,7 @@ export function VaultDetailPage(props: { vaultId: string }) {
         health={health}
         onChange={refresh}
       />
+      <Clients nodes={nodes} devices={devices} onChange={refresh} />
       {vault.legacyMembers.length > 0 && <LegacyMembers vault={vault} onChange={refresh} />}
       <Backups vaultId={vault.id} backups={backups} onChange={refresh} />
       <DangerZone vault={vault} onChange={refresh} />

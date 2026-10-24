@@ -17,6 +17,7 @@ import {
 } from '../services/vaults.js';
 import { runBackup } from '../services/backups.js';
 import { getVaultHealth } from '../services/vaultHealth.js';
+import { refreshVaultNodes } from '../services/vaultNodes.js';
 
 const createSchema = z.object({ name: z.string(), encrypted: z.boolean().default(true) });
 const adoptSchema = z.object({
@@ -123,6 +124,11 @@ export function vaultRoutes(server: FastifyInstance): void {
   server.get('/vaults/:id/health', async (request) => {
     const { id } = request.params as { id: string };
     return getVaultHealth({ db: server.db, couch: server.couch }, id);
+  });
+
+  server.get('/vaults/:id/nodes', async (request) => {
+    const { id } = request.params as { id: string };
+    return refreshVaultNodes({ db: server.db, couch: server.couch }, id);
   });
 
   server.delete('/vaults/:id', async (request, reply) => {

@@ -26,6 +26,7 @@ export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
+  put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body),
 };
 
@@ -87,12 +88,45 @@ export interface VaultHealth {
     firstConnected: string | null;
     access: 'configured' | 'drifted' | 'unknown';
   }[];
+  clients: {
+    milestone: 'present' | 'absent' | 'unavailable';
+    total: number;
+    minRecommendedPluginVersion: string;
+    outdated: { nodeId: string; label: string; pluginVersion: string | null }[];
+  };
   backup: {
     lastFinishedAt: string | null;
     lastVerifiedAt: string | null;
     lastStatus: string | null;
   };
   warnings: string[];
+}
+
+/** A LiveSync client observed in the vault's milestone document. */
+export interface VaultNode {
+  vaultId: string;
+  nodeId: string;
+  label: string;
+  accepted: boolean;
+  deviceName: string | null;
+  vaultName: string | null;
+  pluginVersion: string | null;
+  appVersion: string | null;
+  platform: string | null;
+  lastConnected: string | null;
+  firstSeen: string;
+  lastObserved: string;
+  outdated: boolean;
+  device: { id: string; name: string } | null;
+}
+
+export interface VaultNodes {
+  vaultId: string;
+  milestone: 'present' | 'absent' | 'unavailable';
+  locked: boolean;
+  error?: string;
+  minRecommendedPluginVersion: string;
+  nodes: VaultNode[];
 }
 
 export interface Device {

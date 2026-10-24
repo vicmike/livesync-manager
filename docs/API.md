@@ -45,6 +45,9 @@ reverse proxy (Authentik/Authelia style). Disabled by default.
 | POST | `/devices/:id/reinvite` | regenerate invite (rotates that device's CouchDB password, invalidates prior invites) |
 | POST | `/devices/:id/revoke` | destructive-lite: disables CouchDB user, marks revoked; requires confirm token |
 | PATCH| `/devices/:id` | rename |
+| POST | `/devices/:id/connected` | admin confirmation that a pending device is syncing (the invite page's confirm button was skipped) |
+| PUT  | `/devices/:id/node` | `{nodeId}` links the device to a LiveSync client seen on its vault (see `GET /vaults/:id/nodes`); `{nodeId: null}` unlinks. 404 for an unseen client, 409 if another device holds it. The linked client's last connection becomes the device's approximate "last seen". Audited |
+| GET  | `/vaults/:id/nodes` | LiveSync clients observed in the vault's milestone document (LIVESYNC_INTEGRATION.md § 5): label, plugin/app version, platform where reported, last connection, `outdated` flag (plugin below `minRecommendedPluginVersion`), linked device. Re-reads the document and auto-links unambiguous new clients to recently onboarded devices. `milestone` is `present`, `absent` (no client ever connected) or `unavailable` (CouchDB error; stored observations returned with `error`). Never writes to CouchDB |
 
 ### Public invite endpoints (no session)
 
@@ -64,7 +67,7 @@ Rate-limit `/invite/*` aggressively; constant-time token compare against
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/health` | app + CouchDB server health plus the cached required-configuration status. Unauthenticated: it is the container liveness/readiness probe target, so it returns the cached result of the most recent poll and never calls CouchDB synchronously |
-| GET | `/vaults/:id/health` | doc count, update_seq, DB size, per-device account-access state, onboarding confirmation, backup freshness, warnings[] (human-readable strings). CouchDB cannot provide reliable live per-device replication status. |
+| GET | `/vaults/:id/health` | doc count, update_seq, DB size, per-device account-access state, onboarding confirmation, `clients` (count of LiveSync clients seen and those running an outdated plugin; refreshes the observations), backup freshness, warnings[] (human-readable strings). Client activity comes from LiveSync's own milestone document and is approximate; CouchDB itself provides no per-device replication status. |
 | GET | `/server/config` | per-key pass/fail against the required CouchDB settings (LIVESYNC_INTEGRATION.md § 2) |
 | POST | `/server/config/fix` | idempotent PUTs for the failing keys. Response carries a `persistence: "unknown"` caveat: on declaratively managed CouchDB installs the fix reverts at the next CouchDB restart (LIVESYNC_INTEGRATION.md § 2). The UI must surface this |
 

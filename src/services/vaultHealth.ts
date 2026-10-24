@@ -2,6 +2,11 @@ import type { AppDatabase } from '../db/index.js';
 import type { DatabaseInfo, SecurityObject, UserDoc } from '../couch/client.js';
 import { getVault } from './vaults.js';
 import { listDevices } from './devices.js';
+import {
+  MIN_RECOMMENDED_PLUGIN_VERSION,
+  refreshVaultNodes,
+  type VaultNodesCouch,
+} from './vaultNodes.js';
 
 const STALE_BACKUP_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -15,6 +20,13 @@ export interface VaultHealth {
     firstConnected: string | null;
     access: 'configured' | 'drifted' | 'unknown';
   }[];
+  /** LiveSync clients seen in the vault's milestone document (approximate). */
+  clients: {
+    milestone: 'present' | 'absent' | 'unavailable';
+    total: number;
+    minRecommendedPluginVersion: string;
+    outdated: { nodeId: string; label: string; pluginVersion: string | null }[];
+  };
   backup: {
     lastFinishedAt: string | null;
     lastVerifiedAt: string | null;
@@ -23,7 +35,7 @@ export interface VaultHealth {
   warnings: string[];
 }
 
-export interface VaultHealthCouch {
+export interface VaultHealthCouch extends VaultNodesCouch {
   databaseInfo(name: string): Promise<DatabaseInfo>;
   getSecurity(db: string): Promise<SecurityObject>;
   getUser(name: string): Promise<UserDoc | undefined>;
@@ -52,6 +64,10 @@ function lastBackupInfo(db: AppDatabase, vaultId: string): VaultHealth['backup']
     lastVerifiedAt: verified?.verified_at ?? null,
     lastStatus: last?.status ?? null,
   };
+}
+
+function describeClients(outdated: VaultHealth['clients']['outdated']): string {
+  return outdated.map((c) => `${c.label} (${c.pluginVersion ?? 'unknown version'})`).join(', ');
 }
 
 /** Human-readable warnings only (AGENTS.md); every string is actionable. */
@@ -118,6 +134,40 @@ export async function getVaultHealth(deps: VaultHealthDeps, vaultId: string): Pr
     access: device.access,
   }));
 
+  // The milestone document is LiveSync's own record of which clients have
+  // connected and which plugin version each runs (LIVESYNC_INTEGRATION.md § 5).
+  let clients: VaultHealth['clients'] = {
+    milestone: 'unavailable',
+    total: 0,
+    minRecommendedPluginVersion: MIN_RECOMMENDED_PLUGIN_VERSION,
+    outdated: [],
+  };
+  if (!('error' in couch)) {
+    const nodes = await refreshVaultNodes(deps, vaultId);
+    clients = {
+      milestone: nodes.milestone,
+      total: nodes.nodes.length,
+      minRecommendedPluginVersion: nodes.minRecommendedPluginVersion,
+      outdated: nodes.nodes
+        .filter((n) => n.outdated)
+        .map((n) => ({ nodeId: n.nodeId, label: n.label, pluginVersion: n.pluginVersion })),
+    };
+    if (nodes.error !== undefined) {
+      warnings.push(
+        `Could not read the vault's LiveSync client list (${nodes.error}). Check CouchDB and try again.`,
+      );
+    }
+    if (clients.outdated.length > 0) {
+      const plural = clients.outdated.length > 1;
+      warnings.push(
+        `${plural ? 'LiveSync clients' : 'LiveSync client'} ${describeClients(clients.outdated)} ` +
+          `${plural ? 'run' : 'runs'} a plugin older than ${MIN_RECOMMENDED_PLUGIN_VERSION}, ` +
+          'which fixed a security issue where synchronised changes could reach files outside ' +
+          `the vault. Update Self-hosted LiveSync on ${plural ? 'those devices' : 'that device'}.`,
+      );
+    }
+  }
+
   const backup = lastBackupInfo(deps.db, vaultId);
   if (backup.lastFinishedAt === null) {
     warnings.push(
@@ -134,5 +184,5 @@ export async function getVaultHealth(deps: VaultHealthDeps, vaultId: string): Pr
     }
   }
 
-  return { vaultId, couch, devices, backup, warnings };
+  return { vaultId, couch, devices, clients, backup, warnings };
 }

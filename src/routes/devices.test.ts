@@ -135,4 +135,98 @@ describe('device routes', () => {
     expect((renamed.json() as { name: string }).name).toBe('Backup Phone');
     await server.close();
   });
+
+  it('lists LiveSync clients and links them to devices', async () => {
+    const { server, fake, cookie, vault } = await makeFixture();
+    const added = await server.inject({
+      method: 'POST',
+      url: `/api/v1/vaults/${vault.id}/devices`,
+      headers: { cookie },
+      payload: { name: 'Phone' },
+    });
+    const { device } = added.json() as { device: { id: string } };
+
+    const empty = await server.inject({
+      method: 'GET',
+      url: `/api/v1/vaults/${vault.id}/nodes`,
+      headers: { cookie },
+    });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toMatchObject({ milestone: 'absent', nodes: [] });
+
+    fake.databases.get('vault-personal')!.localDocs.set('_local/obsydian_livesync_milestone', {
+      type: 'milestoneinfo',
+      accepted_nodes: ['node-1'],
+      node_info: {
+        'node-1': {
+          device_name: 'My Phone',
+          plugin_version: '1.0.39',
+          last_connected: 1_700_000_000_000,
+        },
+      },
+    });
+    const listed = await server.inject({
+      method: 'GET',
+      url: `/api/v1/vaults/${vault.id}/nodes`,
+      headers: { cookie },
+    });
+    const body = listed.json() as {
+      milestone: string;
+      nodes: { nodeId: string; label: string; device: { id: string } | null }[];
+    };
+    expect(body.milestone).toBe('present');
+    // The device is still pending (never confirmed), so nothing auto-linked.
+    expect(body.nodes).toEqual([
+      expect.objectContaining({ nodeId: 'node-1', label: 'My Phone', device: null }),
+    ]);
+
+    const badBody = await server.inject({
+      method: 'PUT',
+      url: `/api/v1/devices/${device.id}/node`,
+      headers: { cookie },
+      payload: { nodeId: 42 },
+    });
+    expect(badBody.statusCode).toBe(400);
+
+    const unknown = await server.inject({
+      method: 'PUT',
+      url: `/api/v1/devices/${device.id}/node`,
+      headers: { cookie },
+      payload: { nodeId: 'node-does-not-exist' },
+    });
+    expect(unknown.statusCode).toBe(404);
+
+    const linked = await server.inject({
+      method: 'PUT',
+      url: `/api/v1/devices/${device.id}/node`,
+      headers: { cookie },
+      payload: { nodeId: 'node-1' },
+    });
+    expect(linked.statusCode).toBe(200);
+    expect((linked.json() as { lastSeen: string }).lastSeen).toBe(
+      new Date(1_700_000_000_000).toISOString(),
+    );
+
+    const health = await server.inject({
+      method: 'GET',
+      url: `/api/v1/vaults/${vault.id}/health`,
+      headers: { cookie },
+    });
+    expect((health.json() as { clients: { total: number } }).clients.total).toBe(1);
+
+    const unlinked = await server.inject({
+      method: 'PUT',
+      url: `/api/v1/devices/${device.id}/node`,
+      headers: { cookie },
+      payload: { nodeId: null },
+    });
+    expect(unlinked.statusCode).toBe(200);
+    const after = await server.inject({
+      method: 'GET',
+      url: `/api/v1/vaults/${vault.id}/nodes`,
+      headers: { cookie },
+    });
+    expect((after.json() as typeof body).nodes[0]!.device).toBeNull();
+    await server.close();
+  });
 });

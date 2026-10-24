@@ -11,6 +11,7 @@ import {
   revokeDevice,
   type DeviceServiceDeps,
 } from '../services/devices.js';
+import { setDeviceNode } from '../services/vaultNodes.js';
 import { getVault } from '../services/vaults.js';
 
 const addSchema = z.object({
@@ -19,6 +20,7 @@ const addSchema = z.object({
 });
 const renameSchema = z.object({ name: z.string() });
 const revokeSchema = z.object({ confirmToken: z.string() });
+const nodeSchema = z.object({ nodeId: z.string().min(1).max(200).nullable() });
 
 export function deviceRoutes(server: FastifyInstance): void {
   const deps: DeviceServiceDeps = {
@@ -50,6 +52,12 @@ export function deviceRoutes(server: FastifyInstance): void {
   server.post('/devices/:id/connected', async (request) => {
     const { id } = request.params as { id: string };
     return markDeviceConnected(server.db, id);
+  });
+
+  server.put('/devices/:id/node', async (request) => {
+    const { id } = request.params as { id: string };
+    const { nodeId } = nodeSchema.parse(request.body);
+    return setDeviceNode(server.db, id, nodeId);
   });
 
   server.post('/devices/:id/reinvite', async (request) => {

@@ -1,12 +1,15 @@
 import { runBackup, type BackupServiceDeps } from './backups.js';
+import { refreshVaultNodes } from './vaultNodes.js';
 
 const BACKUP_EVERY_MS = 24 * 60 * 60 * 1000;
 const TICK_MS = 60 * 60 * 1000;
 
 /**
  * In-process scheduler (ARCHITECTURE.md: no cron dependency). Each hourly
- * tick backs up any active vault whose newest successful backup is older
- * than a day, which also self-heals missed runs after downtime.
+ * tick refreshes every active vault's LiveSync client observations (so "last
+ * seen" keeps moving without anyone opening the UI) and backs up any active
+ * vault whose newest successful backup is older than a day, which also
+ * self-heals missed runs after downtime.
  */
 export class BackupScheduler {
   private timer: NodeJS.Timeout | undefined;
@@ -34,7 +37,26 @@ export class BackupScheduler {
     ).map((r) => r.id);
   }
 
+  /** Active vault ids whose client observations are refreshed every tick. */
+  activeVaults(): string[] {
+    return (
+      this.deps.db.prepare("SELECT id FROM vaults WHERE status = 'active'").all() as {
+        id: string;
+      }[]
+    ).map((r) => r.id);
+  }
+
   async tick(): Promise<void> {
+    for (const vaultId of this.activeVaults()) {
+      try {
+        const result = await refreshVaultNodes(this.deps, vaultId);
+        if (result.error !== undefined) {
+          this.onError(new Error(`LiveSync client refresh failed: ${result.error}`), vaultId);
+        }
+      } catch (err) {
+        this.onError(err as Error, vaultId);
+      }
+    }
     for (const vaultId of this.due()) {
       try {
         await runBackup(this.deps, vaultId, 'scheduled');

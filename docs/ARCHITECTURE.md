@@ -54,7 +54,9 @@ src/
                    #   _node config, replication, _active_tasks)
   services/
     vaults.ts      # vault lifecycle (create/connect/archive/delete)
-    devices.ts     # device registry, revocation, last-seen inference
+    devices.ts     # device registry, revocation
+    vaultNodes.ts  # LiveSync client observations from the milestone doc,
+                   #   client ↔ device linking, "last seen", outdated plugins
     invites.ts     # setup-URI generation, invite token lifecycle
     backups.ts     # snapshot/verify/restore orchestration
     health.ts      # pollers + health snapshot evaluation
@@ -99,12 +101,30 @@ CREATE TABLE devices (
   platform         TEXT,                        -- desktop|ios|android|unknown
   couch_username   TEXT NOT NULL UNIQUE,        -- per-device CouchDB user
   couch_password_enc BLOB NOT NULL,
-  livesync_node_id TEXT,                        -- inferred, may be null
+  livesync_node_id TEXT,                        -- linked vault_nodes.node_id, may be null
   status           TEXT NOT NULL DEFAULT 'pending', -- pending|active|revoked
   first_connected  TEXT,
-  last_seen        TEXT,
+  last_seen        TEXT,                        -- follows the linked client's last_connected
   revoked_at       TEXT,
   created_at       TEXT NOT NULL
+);
+-- UNIQUE (vault_id, livesync_node_id): a client links to one device per vault
+
+-- LiveSync clients observed in a vault's _local/obsydian_livesync_milestone
+-- document (LIVESYNC_INTEGRATION.md § 5); refreshed on read, never written back
+CREATE TABLE vault_nodes (
+  vault_id        TEXT NOT NULL REFERENCES vaults(id),
+  node_id         TEXT NOT NULL,                -- LiveSync's random per-install id
+  device_name     TEXT,                         -- LiveSync's own device-and-vault name
+  vault_name      TEXT,
+  plugin_version  TEXT,
+  app_version     TEXT,
+  platform        TEXT,                         -- newer plugins only
+  accepted        INTEGER NOT NULL DEFAULT 1,
+  last_connected  TEXT,                         -- ISO, from node_info.last_connected
+  first_seen      TEXT NOT NULL,                -- first observed by this app
+  last_observed   TEXT NOT NULL,
+  PRIMARY KEY (vault_id, node_id)
 );
 
 CREATE TABLE invites (
@@ -182,13 +202,20 @@ embeds the public URL). See `DEPLOYMENT.md` § The two CouchDB URLs.
 
 ### Device "last seen" is heuristic
 
-LiveSync maintains internal documents in the vault database (milestone/node
-info) and CouchDB tracks per-session activity weakly. We infer last-seen from
-(a) the device user's most recent authenticated request if the CouchDB log or
-`_session` data is available, and (b) LiveSync's internal docs where readable.
-This is best-effort; the UI must present it as "last activity" not a
-guarantee. Correlating a LiveSync node ID to a device row may require a
-one-time hint (first device to appear after an invite is used).
+LiveSync records each client's last connection, plugin version and Obsidian
+version in the vault's `_local/obsydian_livesync_milestone` document, keyed
+by its own random node id (LIVESYNC_INTEGRATION.md § 5). `vaultNodes.ts`
+reads that document with the admin account (never writes it), stores the
+observations in `vault_nodes`, and links a client to a device when a new
+client first appears within the hour after exactly one unlinked device
+confirmed its onboarding; anything ambiguous waits for the admin to link by
+hand (`PUT /devices/:id/node`). A linked device's `last_seen` follows its
+client's `last_connected`. The scheduler refreshes observations hourly and
+the vault page on every load. This is best-effort: the UI presents it as
+"last seen (approx.)", never as proof that a device is in sync. The same
+data flags clients running a plugin older than the minimum recommended
+version (`MIN_RECOMMENDED_PLUGIN_VERSION`, currently the 1.0.37 sync-scope
+security fix) as a vault health warning.
 
 ### Backups are CouchDB-level, verified by count and spot-check
 

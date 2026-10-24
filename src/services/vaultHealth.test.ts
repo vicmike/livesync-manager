@@ -5,6 +5,7 @@ import { defaultMigrationsDir, runMigrations } from '../db/migrations.js';
 import { FakeCouch, makeTestConfig } from '../testing.js';
 import { addDevice, markDeviceConnected, type DeviceServiceDeps } from './devices.js';
 import { getVaultHealth } from './vaultHealth.js';
+import { MILESTONE_DOC_ID, MIN_RECOMMENDED_PLUGIN_VERSION } from './vaultNodes.js';
 import { createVault } from './vaults.js';
 
 async function fixture() {
@@ -57,5 +58,35 @@ describe('vault health', () => {
     const health = await getVaultHealth({ db, couch }, vault.id);
     expect(health.devices[0]).toMatchObject({ access: 'unknown' });
     expect(health.warnings.join('\n')).toContain('Could not verify device access (timeout)');
+  });
+
+  it('warns about LiveSync clients running a plugin older than the security fix', async () => {
+    const { db, couch, vault } = await fixture();
+    couch.databases.get(vault.couchDbName)!.localDocs.set(MILESTONE_DOC_ID, {
+      type: 'milestoneinfo',
+      accepted_nodes: ['old-node', 'new-node'],
+      node_info: {
+        'old-node': { device_name: 'Old Laptop', plugin_version: '1.0.30', last_connected: 1 },
+        'new-node': { device_name: 'Phone', plugin_version: '1.0.39', last_connected: 2 },
+      },
+    });
+    const health = await getVaultHealth({ db, couch }, vault.id);
+    expect(health.clients).toMatchObject({
+      milestone: 'present',
+      total: 2,
+      minRecommendedPluginVersion: MIN_RECOMMENDED_PLUGIN_VERSION,
+      outdated: [{ nodeId: 'old-node', label: 'Old Laptop', pluginVersion: '1.0.30' }],
+    });
+    const warning = health.warnings.find((w) => w.includes('Old Laptop'))!;
+    expect(warning).toContain(`older than ${MIN_RECOMMENDED_PLUGIN_VERSION}`);
+    expect(warning).toContain('Update Self-hosted LiveSync on that device');
+    expect(warning).not.toContain('Phone');
+  });
+
+  it('reports no clients when none has connected yet', async () => {
+    const { db, couch, vault } = await fixture();
+    const health = await getVaultHealth({ db, couch }, vault.id);
+    expect(health.clients).toMatchObject({ milestone: 'absent', total: 0, outdated: [] });
+    expect(health.warnings.join('\n')).not.toContain('LiveSync client');
   });
 });
