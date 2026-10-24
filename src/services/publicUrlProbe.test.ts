@@ -51,8 +51,12 @@ describe('probePublicUrl', () => {
   });
 
   it('fails when the allow-origin header is missing', async () => {
+    // CouchDB answered (its banner is present), so the missing header is a
+    // real CORS defect, not an access layer refusing the manager.
     const fetchImpl: FetchLike = () =>
-      Promise.resolve(response(401, { 'Access-Control-Allow-Credentials': 'true' }));
+      Promise.resolve(
+        response(401, { Server: 'CouchDB/3.3.3', 'Access-Control-Allow-Credentials': 'true' }),
+      );
     const probe = await probePublicUrl('https://couchdb.example.com', { fetchImpl });
     expect(probe.status).toBe('fail');
     expect(probe.origins[0]!.problems).toHaveLength(1);
@@ -81,6 +85,27 @@ describe('probePublicUrl', () => {
     expect(probe.status).toBe('fail');
     expect(probe.origins[0]!.problems[0]).toMatch(/Access-Control-Allow-Credentials is missing/);
     expect(probe.origins[0]!.problems[0]).toMatch(/cors\/credentials = true/);
+  });
+
+  it('reports a 403 without CORS headers as inconclusive, not as a CORS failure', async () => {
+    // An IP allowlist or WAF in front of CouchDB refuses the manager's own
+    // address; CouchDB never saw the request (it would have sent CORS headers
+    // even on its 401), so nothing can be said about what devices see.
+    const result = await probePublicUrl('https://couch.example.com', {
+      fetchImpl: () => Promise.resolve(response(403, { Server: 'nginx' })),
+    });
+    expect(result.status).toBe('warn');
+    expect(result.origins.every((o) => o.blocked === true && !o.ok)).toBe(true);
+    expect(result.problems.join(' ')).toMatch(/inconclusive/);
+    expect(result.origins[0]!.problems.join(' ')).toMatch(/allowlist|WAF/);
+  });
+
+  it('still fails when CouchDB itself answers 401 without CORS headers', async () => {
+    const result = await probePublicUrl('https://couch.example.com', {
+      fetchImpl: () => Promise.resolve(response(401, { Server: 'CouchDB/3.5.2 (Erlang OTP/26)' })),
+    });
+    expect(result.status).toBe('fail');
+    expect(result.origins[0]!.blocked).toBeUndefined();
   });
 
   it('fails on a 5xx from the proxy', async () => {
@@ -116,7 +141,7 @@ describe('probePublicUrl', () => {
   });
 
   it('reports a CORS failure as fail even when the scheme also warns', async () => {
-    const fetchImpl: FetchLike = () => Promise.resolve(response(401, {}));
+    const fetchImpl: FetchLike = () => Promise.resolve(response(401, { Server: 'CouchDB/3.3.3' }));
     const probe = await probePublicUrl('http://localhost:5984', { fetchImpl });
     expect(probe.status).toBe('fail');
     expect(probe.problems).toHaveLength(2);

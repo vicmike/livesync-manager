@@ -189,6 +189,15 @@ reported per origin with what to change; a plain-`http` URL is a warning
 (mobile Obsidian requires OS-trusted https). The probe is a separate health
 item from the config check so one failing never hides the other.
 
+One case is reported as *inconclusive* (a warning, not a failure): HTTP 401
+or 403 **without** CORS headers and without a CouchDB `Server` banner.
+CouchDB sends its CORS headers even on its own 401, so that response means
+an access-control layer in front of it (an IP allowlist on the ingress, a WAF,
+an authenticating proxy) refused the manager's own address before CouchDB
+saw the request, and nothing can be said about what devices see. The fix is
+to allow the manager's egress address through, or to accept the item as
+inconclusive while devices sync fine.
+
 **Runtime config writes may not persist.** `PUT /_node/<node>/_config/...`
 writes to the last `.ini` file in CouchDB's chain, but many deployments
 manage that file declaratively (Kubernetes ConfigMap copied into an emptyDir
@@ -248,7 +257,7 @@ device can read/write, while the app admin can still operate.
    (advanced)"* (a device that already holds the vault's data).
 4. Joining: **"Setup Complete: Preparing to Fetch Synchronisation Data"** →
    **"Restart and Fetch Data"**. After the restart, Fast Setup
-   (`redFlag.simpleFetch.ts`, upstream `docs/tips/fast-setup.md`) asks
+   (`redFlag.simpleFetch.ts`, upstream `tips/fast-setup.md`) asks
    **"Data retrieval scheduled"** → *"Overwrite all with remote files"* for
    an empty vault (*"Compare time and take newer"* is for a vault with local
    work) → *"How to handle extra existing local files?"* → *"Keep local files
@@ -382,7 +391,7 @@ races every client's compatibility check.
   ("Reset Synchronisation on This Device" to adopt the server's copy;
   "Overwrite Server Data with This Device's Files" to replace the server
   from one device; `flag_fetch.md` / `flag_rebuild.md` in the vault root
-  schedule the same on next start, upstream `docs/recovery.md`). The app's
+  schedule the same on next start, upstream `recovery.md`). The app's
   role during recovery is: lock DB, guide the user with the exact menu
   wording, unlock.
 - E2EE passphrase rotation: requires client-side re-encryption/rebuild.

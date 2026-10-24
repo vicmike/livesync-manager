@@ -113,8 +113,8 @@ survive network filesystems.
 
 Devices talk to CouchDB through `COUCHDB_PUBLIC_URL`, so the proxy on that
 hostname is part of the sync path and is where most upstream support
-threads end up. The checklist (upstream: `docs/setup_own_server.md`,
-`docs/troubleshooting.md`, and the `Caddyfile` shipped with the plugin's own
+threads end up. The checklist (upstream: `setup_own_server.md`,
+`troubleshooting.md`, and the `Caddyfile` shipped with the plugin's own
 Docker setup):
 
 - **TLS with an OS-trusted certificate.** iOS and Android reject self-signed

@@ -27,6 +27,14 @@ export interface OriginProbe {
   allowCredentials: string | null;
   /** Actionable, one per defect. */
   problems: string[];
+  /**
+   * The request was refused before reaching CouchDB (HTTP 401/403 with no
+   * CORS headers and no CouchDB server banner): an access-control layer in
+   * front of CouchDB, such as an IP allowlist, is blocking the manager's own
+   * address. The probe cannot tell what devices see, so this is reported as
+   * inconclusive rather than as a failure.
+   */
+  blocked?: boolean;
 }
 
 export interface PublicUrlProbe {
@@ -129,6 +137,22 @@ async function probeOrigin(
     );
     return { result, server };
   }
+  if (
+    (response.status === 401 || response.status === 403) &&
+    result.allowOrigin === null &&
+    !(server ?? '').toLowerCase().includes('couchdb')
+  ) {
+    result.blocked = true;
+    result.problems.push(
+      `${base} answered HTTP ${response.status} without CORS headers for Origin ${origin}, so the ` +
+        'request was refused before it reached CouchDB (CouchDB itself sends CORS headers even on ' +
+        'its own 401). An access-control layer in front of CouchDB, such as an IP allowlist, a WAF ' +
+        "or an authenticating proxy, is blocking the manager's address, and this check cannot tell " +
+        "what devices see. Allow the manager's address through to make the check meaningful, or " +
+        'ignore this item while devices sync fine.',
+    );
+    return { result, server };
+  }
   if (response.status >= 500) {
     result.problems.push(
       `${base} answered HTTP ${response.status}. The proxy or CouchDB behind it is unhealthy; ` +
@@ -186,7 +210,13 @@ export async function probePublicUrl(
     server ??= probed.server;
   }
   const failing = origins.filter((o) => !o.ok);
-  if (failing.length > 0) {
+  const inconclusive = failing.length > 0 && failing.every((o) => o.blocked === true);
+  if (inconclusive) {
+    problems.push(
+      `The check is inconclusive: ${base} refuses requests from the manager's own address ` +
+        'before they reach CouchDB, so it cannot judge what devices see. See the per-origin details.',
+    );
+  } else if (failing.length > 0) {
     problems.push(
       `${failing.length} of ${origins.length} LiveSync origins cannot use ${base}: ` +
         failing.map((o) => o.origin).join(', ') +
@@ -194,7 +224,8 @@ export async function probePublicUrl(
     );
   }
   return {
-    status: failing.length > 0 ? 'fail' : scheme ? 'warn' : 'ok',
+    status:
+      failing.length > 0 && !inconclusive ? 'fail' : failing.length > 0 || scheme ? 'warn' : 'ok',
     url: base,
     scheme: url.protocol.replace(/:$/, ''),
     server,

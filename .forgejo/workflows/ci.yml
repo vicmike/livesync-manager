@@ -49,10 +49,18 @@ jobs:
       # this workflow (.github/workflows/ci.yml) keeps the action.
       - name: Install helm
         run: |
-          set -eu
+          set -eux
           VERSION=v3.16.4
-          curl -fsSLO "https://get.helm.sh/helm-${VERSION}-linux-amd64.tar.gz"
-          curl -fsSLO "https://get.helm.sh/helm-${VERSION}-linux-amd64.tar.gz.sha256sum"
+          # Runner images differ in what they ship; fall back from curl to
+          # wget to node (always present, since the checks job runs npm).
+          dl() {
+            if command -v curl >/dev/null 2>&1; then curl -fsSL -o "$2" "$1";
+            elif command -v wget >/dev/null 2>&1; then wget -qO "$2" "$1";
+            else node -e 'const [u,o]=process.argv.slice(1);fetch(u).then(r=>{if(!r.ok)throw new Error(String(r.status));return r.arrayBuffer()}).then(b=>require("fs").writeFileSync(o,Buffer.from(b)))' "$1" "$2";
+            fi
+          }
+          dl "https://get.helm.sh/helm-${VERSION}-linux-amd64.tar.gz" "helm-${VERSION}-linux-amd64.tar.gz"
+          dl "https://get.helm.sh/helm-${VERSION}-linux-amd64.tar.gz.sha256sum" "helm-${VERSION}-linux-amd64.tar.gz.sha256sum"
           sha256sum -c "helm-${VERSION}-linux-amd64.tar.gz.sha256sum"
           tar -xzf "helm-${VERSION}-linux-amd64.tar.gz"
           mkdir -p "$HOME/.local/bin"
