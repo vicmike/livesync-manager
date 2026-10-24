@@ -35,10 +35,32 @@ export interface Session {
   authenticated: boolean;
 }
 
+export interface OriginProbe {
+  origin: string;
+  ok: boolean;
+  httpStatus: number | null;
+  allowOrigin: string | null;
+  allowCredentials: string | null;
+  problems: string[];
+}
+
+export interface PublicUrlProbe {
+  status: 'ok' | 'warn' | 'fail' | 'unknown';
+  url: string | null;
+  scheme?: string;
+  server?: string | null;
+  origins?: OriginProbe[];
+  problems?: string[];
+  checkedAt: string | null;
+  error?: string;
+}
+
 export interface Health {
   status: 'ok' | 'degraded' | 'unknown';
   couchdb: { reachable: boolean; version?: string; latencyMs?: number; error?: string };
   config: { status: 'ok' | 'drifted' | 'unknown'; checkedAt: string | null; error?: string };
+  /** The devices' CouchDB URL probed with each LiveSync origin; separate from `config`. */
+  publicUrl: PublicUrlProbe;
   checkedAt: string | null;
 }
 
@@ -168,11 +190,15 @@ export interface ConfigCheck {
   expected: string;
   actual: string | undefined;
   ok: boolean;
+  /** false: informational (a legacy key the server ignores); never fails the check. */
+  required: boolean;
+  note?: string;
 }
 
 export interface ConfigCheckResult {
   node: string;
   ok: boolean;
+  couchdbVersion: string | null;
   checks: ConfigCheck[];
 }
 

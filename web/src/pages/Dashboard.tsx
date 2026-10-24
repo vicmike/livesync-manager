@@ -7,6 +7,7 @@ import {
   type ConfigFixResult,
   type EventEntry,
   type Health,
+  type PublicUrlProbe,
   type Vault,
   type VaultHealth,
 } from '../api.js';
@@ -100,6 +101,8 @@ function ServerPanel(props: {
   }
 
   const failing = props.config?.checks.filter((c) => !c.ok) ?? [];
+  const notes = props.config?.checks.filter((c) => c.ok && c.note) ?? [];
+  const probe = props.health?.publicUrl;
   return (
     <Card
       title="CouchDB server"
@@ -147,9 +150,78 @@ function ServerPanel(props: {
             </ul>
           </>
         ))}
+      {notes.length > 0 && (
+        <ul className="muted">
+          {notes.map((c) => (
+            <li key={`${c.section}/${c.key}`}>
+              <code>
+                {c.section}/{c.key}
+              </code>{' '}
+              {c.note}
+            </li>
+          ))}
+        </ul>
+      )}
       {fixResult && <p className="muted">{fixResult.note}</p>}
+      {probe && <PublicUrlStatus probe={probe} />}
       <ErrorLine error={error} />
     </Card>
+  );
+}
+
+/**
+ * The URL devices use, probed from the manager with LiveSync's origins. A
+ * proxy can break every device while CouchDB's own settings pass, so this is
+ * shown next to, not inside, the configuration result.
+ */
+function PublicUrlStatus(props: { probe: PublicUrlProbe }) {
+  const { probe } = props;
+  const badge =
+    probe.status === 'ok'
+      ? statusBadge('ok')
+      : probe.status === 'warn'
+        ? statusBadge('degraded')
+        : probe.status === 'fail'
+          ? statusBadge('failed')
+          : statusBadge('unknown');
+  const failingOrigins = probe.origins?.filter((o) => !o.ok) ?? [];
+  return (
+    <>
+      <p>
+        {badge} Devices&apos; CouchDB URL{' '}
+        {probe.url ? <code>{probe.url}</code> : <span className="muted">not configured</span>}
+        {probe.server && <span className="muted"> ({probe.server})</span>}
+        {probe.checkedAt && <span className="muted"> (probed {timeAgo(probe.checkedAt)})</span>}
+      </p>
+      {probe.status === 'unknown' && probe.error && <p className="muted">{probe.error}</p>}
+      {probe.status === 'ok' && (
+        <p className="muted">
+          Reachable over {probe.scheme} with the CORS headers LiveSync needs for every origin.
+        </p>
+      )}
+      {(probe.problems?.length ?? 0) > 0 && (
+        <ul>
+          {probe.problems!.map((problem) => (
+            <li key={problem}>{problem}</li>
+          ))}
+        </ul>
+      )}
+      {failingOrigins.length > 0 && (
+        <ul>
+          {failingOrigins.map((o) => (
+            <li key={o.origin}>
+              <code>{o.origin}</code>
+              {o.httpStatus !== null && <span className="muted"> (HTTP {o.httpStatus})</span>}
+              <ul>
+                {o.problems.map((problem) => (
+                  <li key={problem}>{problem}</li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
 

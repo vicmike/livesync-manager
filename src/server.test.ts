@@ -10,6 +10,7 @@ describe('server', () => {
       status: 'unknown',
       couchdb: { reachable: false },
       config: { status: 'unknown', checkedAt: null },
+      publicUrl: { status: 'unknown', url: null, checkedAt: null },
       checkedAt: null,
     });
     await server.close();

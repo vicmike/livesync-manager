@@ -1,12 +1,25 @@
 import type { FastifyInstance } from 'fastify';
+import type { CouchClient } from '../couch/client.js';
 import { checkServerConfig, fixServerConfig } from '../services/serverConfig.js';
 import { recordEvent } from '../services/events.js';
 
+// The required keys depend on the CouchDB version (LIVESYNC_INTEGRATION.md
+// § 2). An unreadable version falls back to the modern rule set.
+async function couchdbVersion(couch: CouchClient): Promise<string | undefined> {
+  try {
+    return (await couch.serverInfo()).version;
+  } catch {
+    return undefined;
+  }
+}
+
 export function serverRoutes(server: FastifyInstance): void {
-  server.get('/server/config', () => checkServerConfig(server.couch));
+  server.get('/server/config', async () =>
+    checkServerConfig(server.couch, await couchdbVersion(server.couch)),
+  );
 
   server.post('/server/config/fix', async () => {
-    const result = await fixServerConfig(server.couch);
+    const result = await fixServerConfig(server.couch, await couchdbVersion(server.couch));
     if (result.applied.length > 0) {
       recordEvent(server.db, {
         level: 'info',

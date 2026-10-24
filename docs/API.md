@@ -66,9 +66,9 @@ Rate-limit `/invite/*` aggressively; constant-time token compare against
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/health` | app + CouchDB server health plus the cached required-configuration status. Unauthenticated: it is the container liveness/readiness probe target, so it returns the cached result of the most recent poll and never calls CouchDB synchronously |
+| GET | `/health` | app + CouchDB server health, the cached required-configuration status (`config`), and `publicUrl`: the result of probing `COUCHDB_PUBLIC_URL` from the manager with each LiveSync origin (`status` ok/warn/fail/unknown, `server` banner, per-origin HTTP status, CORS headers and actionable `problems`; LIVESYNC_INTEGRATION.md § 2). The overall `status` reflects only the admin connection, so a broken devices' URL never fails the liveness probe. Unauthenticated: it is the container liveness/readiness probe target, so it returns the cached result of the most recent poll and never calls CouchDB synchronously |
 | GET | `/vaults/:id/health` | doc count, update_seq, DB size, per-device account-access state, onboarding confirmation, `clients` (count of LiveSync clients seen and those running an outdated plugin; refreshes the observations), backup freshness, warnings[] (human-readable strings). Client activity comes from LiveSync's own milestone document and is approximate; CouchDB itself provides no per-device replication status. |
-| GET | `/server/config` | per-key pass/fail against the required CouchDB settings (LIVESYNC_INTEGRATION.md § 2) |
+| GET | `/server/config` | per-key pass/fail against the required CouchDB settings (LIVESYNC_INTEGRATION.md § 2). The key set follows the server version (`couchdbVersion`); size limits are minimums; `required: false` marks informational entries (legacy keys a 3.2+ server ignores) that never fail the check or get fixed |
 | POST | `/server/config/fix` | idempotent PUTs for the failing keys. Response carries a `persistence: "unknown"` caveat: on declaratively managed CouchDB installs the fix reverts at the next CouchDB restart (LIVESYNC_INTEGRATION.md § 2). The UI must surface this |
 
 ## Backups

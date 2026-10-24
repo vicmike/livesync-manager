@@ -37,7 +37,7 @@ Environment variables (a config file may set the same keys; env wins):
 | `COUCHDB_ADMIN_URL` | (required) | URL this app uses to reach CouchDB |
 | `COUCHDB_ADMIN_USER` | (required) | CouchDB server-admin user |
 | `COUCHDB_ADMIN_PASSWORD` | (required) | CouchDB server-admin password |
-| `COUCHDB_PUBLIC_URL` | (required) | https URL devices replicate against; embedded in setup URIs |
+| `COUCHDB_PUBLIC_URL` | (required) | https URL devices replicate against; embedded in setup URIs. The health monitor probes it from the manager with LiveSync's origins and reports proxy redirects, missing CORS headers and plain-http URLs on the dashboard |
 | `PUBLIC_BASE_URL` | (required) | The app's own external URL; used to build invite links |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` from the immediate upstream; set `true` behind a proxy |
 | `INVITE_TTL_MINUTES` | `15` | Invite link lifetime (max 1440) |

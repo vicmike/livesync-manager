@@ -152,20 +152,42 @@ the node name from `GET /_membership` (first entry of `all_nodes`) rather
 than hardcoding `_local`. `_local` works on single-node installs but not on
 clusters or installs with an explicit node name:
 
-| Section/key | Value |
-|---|---|
-| `chttpd/require_valid_user` | `true` |
-| `chttpd_auth/require_valid_user` | `true` |
-| `httpd/WWW-Authenticate` | `Basic realm="couchdb"` |
-| `httpd/enable_cors`, `chttpd/enable_cors` | `true` |
-| `chttpd/max_http_request_size` | `4294967296` |
-| `couchdb/max_document_size` | `50000000` |
-| `cors/credentials` | `true` |
-| `cors/origins` | `app://obsidian.md,capacitor://localhost,http://localhost` |
+| Section/key | Requirement | Applies to |
+|---|---|---|
+| `chttpd/require_valid_user` | `true` | CouchDB ≥ 3.2 |
+| `chttpd_auth/require_valid_user` | `true` | CouchDB < 3.2 (ignored by 3.2+; reported as informational if still set) |
+| `httpd/WWW-Authenticate` | `Basic realm="couchdb"` | all |
+| `chttpd/enable_cors` | `true` | CouchDB ≥ 3.2 |
+| `httpd/enable_cors` | `true` | CouchDB < 3.2 (ignored by 3.2+; informational) |
+| `chttpd/max_http_request_size` | at least `4294967296` | all |
+| `couchdb/max_document_size` | at least `50000000` | all |
+| `cors/credentials` | `true` | all |
+| `cors/origins` | includes `app://obsidian.md`, `capacitor://localhost`, `http://localhost`; a bare `*` also passes | all |
 
-The app's "Check server configuration" health item verifies these and offers
-a one-click fix (idempotent PUTs). Missing CORS origins is the classic
-"works on desktop, silently fails on iOS/Android" failure.
+These are the plugin's own rules ("Check database configuration",
+`utilCheckCouchDB.ts`): CouchDB 3.2 moved the authentication and CORS
+switches to the `chttpd` section, the two size limits are minimums, and a
+wildcard origin is accepted. The app's "Check server configuration" health
+item applies the same rules, picking the key set from the server version
+(unknown version ⇒ modern keys), and offers a one-click fix that writes the
+exact values above (idempotent PUTs). Demanding the legacy keys on a 3.2+
+server was a false positive that upstream fixed in the plugin too (its
+reference `local.ini` sets only the modern keys). Missing CORS origins is the
+classic "works on desktop, silently fails on iOS/Android" failure.
+
+**The config check cannot see the devices' path.** It reads CouchDB's
+settings over `COUCHDB_ADMIN_URL`; devices use `COUCHDB_PUBLIC_URL`, usually
+through a reverse proxy, and the dominant upstream support theme is a proxy
+that redirects (a redirect loop drops the CORS headers), adds or strips CORS
+headers, or serves a certificate mobile OSes do not trust. So the health
+monitor also probes `COUCHDB_PUBLIC_URL/` from the manager once per required
+origin, as the plugin does: no credentials, redirects not followed, and the
+response must echo the origin in `Access-Control-Allow-Origin` and carry
+`Access-Control-Allow-Credentials: true`. Any 3xx or 5xx, a missing or
+mismatched allow-origin, missing allow-credentials, or a network/TLS error is
+reported per origin with what to change; a plain-`http` URL is a warning
+(mobile Obsidian requires OS-trusted https). The probe is a separate health
+item from the config check so one failing never hides the other.
 
 **Runtime config writes may not persist.** `PUT /_node/<node>/_config/...`
 writes to the last `.ini` file in CouchDB's chain, but many deployments

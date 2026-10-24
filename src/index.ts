@@ -26,7 +26,7 @@ const couch = new CouchClient({
   user: config.couchdb.adminUser,
   password: config.couchdb.adminPassword,
 });
-const health = new HealthMonitor(couch);
+const health = new HealthMonitor(couch, { publicUrl: config.couchdb.publicUrl });
 
 const server = await buildServer({ config, db, masterKey: masterKey.key, couch, health });
 health.start(HEALTH_POLL_INTERVAL_MS);
