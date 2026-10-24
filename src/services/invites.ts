@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret } from '../crypto/index.js';
 import { encryptSetupUri } from '../crypto/setupUri.js';
 import type { AppDatabase } from '../db/index.js';
 import { recordEvent } from './events.js';
+import { getVaultIdDerivationKey } from './vaults.js';
 
 // Invite-passphrase wordlists, from reference/generate_setupuri.ts
 // (vrtmrz/obsidian-livesync, MIT). The passphrase is typed by a human on
@@ -225,6 +226,15 @@ export async function createInvite(
       column: 'e2ee_passphrase_enc',
       rowId: input.vaultId,
     });
+    // Independent ID derivation (plugin 1.0.33+): the per-vault ID key
+    // travels with every invite exactly like the passphrase. The decoder
+    // rejects a key without its version, so both are set together; legacy
+    // vaults carry neither and the plugin keeps passphrase-derived IDs.
+    const idDerivationKey = getVaultIdDerivationKey(deps.db, deps.masterKey, input.vaultId);
+    if (idDerivationKey !== undefined) {
+      conf.idDerivationVersion = 1;
+      conf.idDerivationKey = idDerivationKey;
+    }
   }
   // Current LiveSync setup stores an active profile as well as compatibility
   // fields. The selected profile stays stable while its credentials differ per
@@ -304,6 +314,16 @@ export interface InvitePage {
   setupUri: string;
   uriPassphrase: string;
   expiresAt: string;
+  /** Oldest plugin that can import this invite (LIVESYNC_INTEGRATION.md § 1). */
+  minimumPluginVersion: string;
+}
+
+/** Oldest Self-hosted LiveSync release that imports our invites. */
+export function minimumPluginVersion(vault: { idDerivation: boolean }): string {
+  // 1.0.13: the setup-URI import flow we document. 1.0.33: independent ID
+  // derivation; an older plugin would ignore the key and write legacy IDs
+  // into a keyed vault.
+  return vault.idDerivation ? '1.0.33' : '1.0.13';
 }
 
 interface InviteRow {
@@ -314,6 +334,7 @@ interface InviteRow {
   setup_uri_enc: Buffer;
   expires_at: string;
   vault_name: string;
+  vault_id_key_len: number | null;
   device_name: string;
 }
 
@@ -323,7 +344,8 @@ function findValidRow(db: AppDatabase, token: string): InviteRow | undefined {
   const row = db
     .prepare(
       `SELECT i.id, i.vault_id, i.device_id, i.uri_passphrase_enc, i.setup_uri_enc, i.expires_at,
-              v.name AS vault_name, d.name AS device_name
+              v.name AS vault_name, length(v.id_derivation_key_enc) AS vault_id_key_len,
+              d.name AS device_name
        FROM invites i
        JOIN vaults v ON v.id = i.vault_id
        JOIN devices d ON d.id = i.device_id
@@ -355,6 +377,9 @@ export function findInvite(deps: InviteDeps, token: string): InvitePage | undefi
       rowId: row.id,
     }),
     expiresAt: row.expires_at,
+    minimumPluginVersion: minimumPluginVersion({
+      idDerivation: (row.vault_id_key_len ?? 0) > 0,
+    }),
   };
 }
 

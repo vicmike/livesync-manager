@@ -30,15 +30,21 @@ Explicitly out of scope for v1:
 - Malicious admin
 - Multi-tenant isolation (this is not SaaS; see AGENTS.md)
 
-## The two passphrases (never conflate)
+## The vault secrets (never conflate)
 
 | Secret | Purpose | Lifetime | Stored where |
 |---|---|---|---|
 | **E2EE passphrase** | LiveSync encrypts note content/paths in CouchDB | Life of the vault | App SQLite, encrypted with master key |
+| **Vault ID key** (shown as the *ID recovery code*, `sls-id-v1:…`) | LiveSync 1.0.33+ derives chunk and metadata document IDs from it instead of from the passphrase; new encrypted vaults only | Life of the vault; changing it needs a client-side rebuild | App SQLite, encrypted with master key; shown once at creation next to the passphrase, embedded in every invite |
 | **Setup-URI passphrase** | Encrypts the `obsidian://setuplivesync?settings=` payload only | Life of one invite (minutes) | App SQLite (encrypted) until invite expiry, shown once on the invite page |
 
-Naming convention in code: `e2eePassphrase` vs `uriPassphrase`. UI copy must
-call them "vault encryption passphrase" and "invite passphrase".
+Naming convention in code: `e2eePassphrase`, `idDerivationKey` /
+`idRecoveryCode`, `uriPassphrase`. UI copy must call them "vault encryption
+passphrase", "ID recovery code" and "invite passphrase". Vaults created before
+the ID key existed, unencrypted vaults, and adopted databases without a
+recovery code use legacy passphrase-derived IDs; every device of a vault must
+agree, which is why the key travels in every invite (LIVESYNC_INTEGRATION.md
+§ 1).
 
 The E2EE passphrase alone is not sufficient to decrypt an E2EE-v2 (HKDF)
 vault: the key derivation also needs the `pbkdf2salt` LiveSync stores in
@@ -60,7 +66,8 @@ a client-side rebuild, like rotation).
 ## Decision: the app stores E2EE passphrases
 
 We store each vault's E2EE passphrase (encrypted at rest) because minting
-future invites requires embedding it in setup URIs. **Consequence, stated
+future invites requires embedding it in setup URIs. The same applies to the
+vault ID key, for the same reason. **Consequence, stated
 honestly:** the server running this app can decrypt vault content. The E2EE
 guarantee degrades from "server never can read notes" to "notes are encrypted
 at rest in CouchDB; the control plane is trusted." For a single admin running

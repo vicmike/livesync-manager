@@ -11,6 +11,7 @@ import {
   deleteVaultConsequences,
   getVault,
   getVaultDetail,
+  getVaultIdDerivationKey,
   listAdoptableDatabases,
   listVaults,
   removeLegacyMember,
@@ -164,14 +165,120 @@ describe('optional encryption', () => {
     const vault = await createVault(deps, 'Plain', { encrypted: false });
     expect(vault.encrypted).toBe(false);
     expect(vault.e2eePassphrase).toBeUndefined();
+    expect(vault.idRecoveryCode).toBeUndefined();
+    expect(vault.idDerivation).toBe(false);
     const row = deps.db
-      .prepare('SELECT e2ee_passphrase_enc, settings_json FROM vaults WHERE id = ?')
-      .get(vault.id) as { e2ee_passphrase_enc: Buffer; settings_json: string };
+      .prepare(
+        'SELECT e2ee_passphrase_enc, id_derivation_key_enc, settings_json FROM vaults WHERE id = ?',
+      )
+      .get(vault.id) as {
+      e2ee_passphrase_enc: Buffer;
+      id_derivation_key_enc: Buffer | null;
+      settings_json: string;
+    };
     expect(row.e2ee_passphrase_enc.length).toBe(0);
-    expect(JSON.parse(row.settings_json)).toMatchObject({
+    expect(row.id_derivation_key_enc).toBeNull();
+    const template = JSON.parse(row.settings_json) as Record<string, unknown>;
+    expect(template).toMatchObject({
       encrypt: false,
       usePathObfuscation: false,
     });
+    expect(template).not.toHaveProperty('idDerivationVersion');
+    expect(template).not.toHaveProperty('encryptInternalMetadata');
+  });
+});
+
+describe('independent ID derivation (plugin 1.0.33+)', () => {
+  it('gives new encrypted vaults a stored ID key, shown once as a recovery code', async () => {
+    const deps = makeDeps();
+    const vault = await createVault(deps, 'Keyed');
+    expect(vault.idDerivation).toBe(true);
+    expect(vault.idRecoveryCode).toMatch(/^sls-id-v1:[0-9a-f]{64}$/);
+    expect(vault.idRecoveryCode).not.toBe(vault.e2eePassphrase);
+
+    const row = deps.db
+      .prepare('SELECT id_derivation_key_enc, settings_json FROM vaults WHERE id = ?')
+      .get(vault.id) as { id_derivation_key_enc: Buffer; settings_json: string };
+    const key = vault.idRecoveryCode!.slice('sls-id-v1:'.length);
+    expect(row.id_derivation_key_enc.toString('latin1')).not.toContain(key);
+    expect(getVaultIdDerivationKey(deps.db, deps.masterKey, vault.id)).toBe(key);
+    expect(JSON.parse(row.settings_json)).toMatchObject({
+      encrypt: true,
+      idDerivationVersion: 1,
+      encryptInternalMetadata: true,
+    });
+    // The settings template never holds the key itself; invites merge it in.
+    expect(row.settings_json).not.toContain(key);
+    // Nothing secret in events.
+    const events = deps.db.prepare('SELECT message, detail_json FROM events').all() as {
+      message: string;
+      detail_json: string | null;
+    }[];
+    expect(events.length).toBeGreaterThan(0);
+    for (const event of events) {
+      expect(`${event.message} ${event.detail_json ?? ''}`).not.toContain(key);
+    }
+  });
+
+  it('adopts a keyed vault from its recovery code, without internal metadata encryption', async () => {
+    const deps = makeDeps();
+    await deps.fake.createDatabase('obsidian');
+    const key = 'cd'.repeat(32);
+    const vault = await adoptVault(deps, {
+      name: 'Keyed Old',
+      couchDbName: 'obsidian',
+      encrypted: true,
+      e2eePassphrase: 'the-existing-passphrase',
+      idRecoveryCode: `  sls-id-v1:${key} `,
+    });
+    expect(vault.idDerivation).toBe(true);
+    expect(getVaultIdDerivationKey(deps.db, deps.masterKey, vault.id)).toBe(key);
+    const template = JSON.parse(
+      (
+        deps.db.prepare('SELECT settings_json FROM vaults WHERE id = ?').get(vault.id) as {
+          settings_json: string;
+        }
+      ).settings_json,
+    ) as Record<string, unknown>;
+    expect(template).toMatchObject({ idDerivationVersion: 1 });
+    expect(template).not.toHaveProperty('encryptInternalMetadata');
+  });
+
+  it('adopts legacy vaults without a key when no recovery code is given', async () => {
+    const deps = makeDeps();
+    await deps.fake.createDatabase('obsidian');
+    const vault = await adoptVault(deps, {
+      name: 'Legacy Old',
+      couchDbName: 'obsidian',
+      encrypted: true,
+      e2eePassphrase: 'the-existing-passphrase',
+      idRecoveryCode: '',
+    });
+    expect(vault.idDerivation).toBe(false);
+    expect(getVaultIdDerivationKey(deps.db, deps.masterKey, vault.id)).toBeUndefined();
+  });
+
+  it('rejects malformed recovery codes and codes on unencrypted adoption, actionably', async () => {
+    const deps = makeDeps();
+    await deps.fake.createDatabase('obsidian');
+    await expect(
+      adoptVault(deps, {
+        name: 'Bad Code',
+        couchDbName: 'obsidian',
+        encrypted: true,
+        e2eePassphrase: 'pw',
+        idRecoveryCode: 'sls-id-v1:not-hex',
+      }),
+    ).rejects.toThrowError(/sls-id-v1:.*64 hex characters.*leave the field empty/);
+    await expect(
+      adoptVault(deps, {
+        name: 'Plain Code',
+        couchDbName: 'obsidian',
+        encrypted: false,
+        idRecoveryCode: `sls-id-v1:${'ef'.repeat(32)}`,
+      }),
+    ).rejects.toThrowError(/only applies to encrypted vaults/);
+    expect(deps.db.prepare('SELECT count(*) c FROM vaults').get()).toEqual({ c: 0 });
   });
 });
 

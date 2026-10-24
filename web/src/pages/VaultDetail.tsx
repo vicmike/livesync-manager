@@ -30,6 +30,8 @@ function bytes(n: number | null): string {
 
 function Devices(props: {
   vaultId: string;
+  /** The vault uses an independent ID key, so joining devices need plugin 1.0.33+. */
+  idDerivation: boolean;
   devices: Device[];
   health: VaultHealth | null;
   onChange: () => void;
@@ -189,6 +191,7 @@ function Devices(props: {
         <InviteReveal
           deviceName={reveal.deviceName}
           invite={reveal.invite}
+          minimumPluginVersion={props.idDerivation ? '1.0.33' : '1.0.13'}
           onClose={() => setReveal(null)}
         />
       )}
@@ -634,6 +637,11 @@ export function VaultDetailPage(props: { vaultId: string }) {
           {vault.name} {statusBadge(vault.status)}
           {vault.locked && <Badge kind="danger">locked</Badge>}{' '}
           {!vault.encrypted && <Badge kind="warn">unencrypted</Badge>}
+          {vault.idDerivation && (
+            <span title="Independent ID key: devices need Self-hosted LiveSync 1.0.33 or newer">
+              <Badge kind="ok">ID key</Badge>
+            </span>
+          )}
         </h1>
         <LockButton vault={vault} onChange={refresh} />
       </nav>
@@ -665,7 +673,13 @@ export function VaultDetailPage(props: { vaultId: string }) {
           {timeAgo(health?.backup.lastVerifiedAt ?? null)}.
         </p>
       </Card>
-      <Devices vaultId={vault.id} devices={devices} health={health} onChange={refresh} />
+      <Devices
+        vaultId={vault.id}
+        idDerivation={vault.idDerivation}
+        devices={devices}
+        health={health}
+        onChange={refresh}
+      />
       {vault.legacyMembers.length > 0 && <LegacyMembers vault={vault} onChange={refresh} />}
       <Backups vaultId={vault.id} backups={backups} onChange={refresh} />
       <DangerZone vault={vault} onChange={refresh} />

@@ -158,20 +158,28 @@ function CreateVault(props: { onCreated: () => void }) {
   const [encrypted, setEncrypted] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reveal, setReveal] = useState<{ name: string; passphrase: string } | null>(null);
+  const [reveal, setReveal] = useState<{
+    name: string;
+    passphrase: string;
+    idRecoveryCode?: string;
+  } | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const vault = await api.post<Vault & { e2eePassphrase?: string }>('/vaults', {
-        name,
-        encrypted,
-      });
+      const vault = await api.post<Vault & { e2eePassphrase?: string; idRecoveryCode?: string }>(
+        '/vaults',
+        { name, encrypted },
+      );
       setName('');
       if (vault.e2eePassphrase) {
-        setReveal({ name: vault.name, passphrase: vault.e2eePassphrase });
+        setReveal({
+          name: vault.name,
+          passphrase: vault.e2eePassphrase,
+          ...(vault.idRecoveryCode ? { idRecoveryCode: vault.idRecoveryCode } : {}),
+        });
       } else {
         props.onCreated();
       }
@@ -208,6 +216,7 @@ function CreateVault(props: { onCreated: () => void }) {
         <PassphraseReveal
           vaultName={reveal.name}
           passphrase={reveal.passphrase}
+          {...(reveal.idRecoveryCode ? { idRecoveryCode: reveal.idRecoveryCode } : {})}
           onClose={() => {
             setReveal(null);
             props.onCreated();
@@ -224,6 +233,7 @@ function AdoptVault(props: { candidates: AdoptableDatabase[]; onCreated: () => v
   const [name, setName] = useState('');
   const [encrypted, setEncrypted] = useState(true);
   const [passphrase, setPassphrase] = useState('');
+  const [idRecoveryCode, setIdRecoveryCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -241,6 +251,7 @@ function AdoptVault(props: { candidates: AdoptableDatabase[]; onCreated: () => v
         couchDbName,
         encrypted,
         ...(encrypted ? { e2eePassphrase: passphrase } : {}),
+        ...(encrypted && idRecoveryCode.trim() ? { idRecoveryCode: idRecoveryCode.trim() } : {}),
       });
       props.onCreated();
     } catch (err) {
@@ -286,6 +297,15 @@ function AdoptVault(props: { candidates: AdoptableDatabase[]; onCreated: () => v
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
             required
+          />
+        )}
+        {encrypted && (
+          <input
+            type="password"
+            placeholder="ID recovery code (sls-id-v1:..., if the vault has one)"
+            title="Only for vaults set up with an independent ID key (Self-hosted LiveSync 1.0.33+). Reveal it in the plugin's E2EE settings on a syncing device. Leave empty otherwise."
+            value={idRecoveryCode}
+            onChange={(e) => setIdRecoveryCode(e.target.value)}
           />
         )}
         <button type="submit" disabled={busy}>

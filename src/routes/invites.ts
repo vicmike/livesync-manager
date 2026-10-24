@@ -57,7 +57,11 @@ with it and open the copied link. (If the link does not open the plugin, choose
 <li>When the plugin asks, paste or confirm the Setup URI and enter the invite
 passphrase shown below.</li>
 </ol>
-<p>Use Self-hosted LiveSync version 1.0.13 or newer. The plugin then walks through a few dialogs. Answer
+<p>Use Self-hosted LiveSync version ${escapeHtml(invite.minimumPluginVersion)} or newer.${
+      invite.minimumPluginVersion === '1.0.13'
+        ? ''
+        : ' This vault uses an independent ID key, which older plugin versions cannot apply; update the plugin on this device first.'
+    } The plugin then walks through a few dialogs. Answer
 them like this:</p>
 <ul>
 <li><em>Fetch configuration from remote database?</em> If other devices already

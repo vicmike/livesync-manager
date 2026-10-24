@@ -317,4 +317,56 @@ describe('lock, adopt, and legacy members over HTTP', () => {
     expect(body.e2eePassphrase).toBeUndefined();
     await server.close();
   });
+
+  it('returns the ID recovery code once and accepts it on adoption', async () => {
+    const { server, cookie, fake } = await makeServer();
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/v1/vaults',
+      headers: { cookie },
+      payload: { name: 'Keyed' },
+    });
+    expect(created.statusCode).toBe(201);
+    const body = created.json() as { id: string; idDerivation: boolean; idRecoveryCode?: string };
+    expect(body.idDerivation).toBe(true);
+    expect(body.idRecoveryCode).toMatch(/^sls-id-v1:[0-9a-f]{64}$/);
+    const detail = await server.inject({
+      method: 'GET',
+      url: `/api/v1/vaults/${body.id}`,
+      headers: { cookie },
+    });
+    expect(detail.body).not.toContain(body.idRecoveryCode!.slice('sls-id-v1:'.length));
+    expect((detail.json() as { idDerivation: boolean }).idDerivation).toBe(true);
+
+    await fake.createDatabase('obsidian');
+    const bad = await server.inject({
+      method: 'POST',
+      url: '/api/v1/vaults/connect',
+      headers: { cookie },
+      payload: {
+        name: 'Old',
+        couchDbName: 'obsidian',
+        encrypted: true,
+        e2eePassphrase: 'pw',
+        idRecoveryCode: 'sls-id-v1:nope',
+      },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: string }).error).toMatch(/64 hex characters/);
+    const adopted = await server.inject({
+      method: 'POST',
+      url: '/api/v1/vaults/connect',
+      headers: { cookie },
+      payload: {
+        name: 'Old',
+        couchDbName: 'obsidian',
+        encrypted: true,
+        e2eePassphrase: 'pw',
+        idRecoveryCode: body.idRecoveryCode,
+      },
+    });
+    expect(adopted.statusCode).toBe(201);
+    expect((adopted.json() as { idDerivation: boolean }).idDerivation).toBe(true);
+    await server.close();
+  });
 });

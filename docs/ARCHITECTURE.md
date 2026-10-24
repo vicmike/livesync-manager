@@ -85,6 +85,7 @@ CREATE TABLE vaults (
   slug                 TEXT NOT NULL UNIQUE,    -- also couch db name suffix
   couch_db_name        TEXT NOT NULL UNIQUE,    -- e.g. vault-<slug>
   e2ee_passphrase_enc  BLOB NOT NULL,           -- encrypted w/ master key
+  id_derivation_key_enc BLOB,                   -- LiveSync 1.0.33+ ID key, encrypted; NULL = legacy IDs
   settings_json        TEXT NOT NULL,           -- LiveSync settings template
   status               TEXT NOT NULL DEFAULT 'active',  -- active|archived|deleting
   created_at           TEXT NOT NULL,

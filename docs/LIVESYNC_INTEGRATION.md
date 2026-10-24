@@ -92,30 +92,36 @@ control was removed in plugin 1.0 and upstream's generator explicitly erases
 it from URIs; the latter was a stale flyio-script value fighting the plugin
 default.
 
-**Settings introduced in plugin 1.0.33–1.0.38 that we intentionally omit.**
+**Settings introduced in plugin 1.0.33–1.0.38, and what we do with them.**
 The decoder and the plugin's `SetupManager` fill the defaults when a URI
 lacks them, so omission means explicit "legacy", not "unspecified"
-(`src/crypto/setupUri.test.ts` pins this):
+(`src/crypto/setupUri.test.ts` pins both the legacy and the keyed case):
 
 - `idDerivationVersion` / `idDerivationKey` (1.0.33, "independent ID
   derivation"): a per-vault random 256-bit key from which chunk IDs and
   obfuscated metadata IDs are derived, instead of from the E2EE passphrase.
-  The plugin's own wizard turns it on for new vaults and can reveal the key
-  as an `sls-id-v1:` recovery code. Every device of a vault must carry the
-  same key; the milestone tweak check hard-fails (`ID_KEY_MISMATCH`) on a
-  difference, and changing it needs the usual rebuild + fetch. Our URIs omit
-  both fields, so every device of our vaults uses version 0 (passphrase-
-  derived IDs) consistently. Adopting it would mean: generate and store the
-  key at vault creation like the E2EE passphrase, include it in every invite,
-  accept a recovery code when adopting an existing database, and require
-  plugin ≥ 1.0.33 on every device (older clients ignore the fields; the
-  remote feature generation in § 3 is what stops them from writing legacy
-  IDs into a keyed vault).
+  The plugin's own wizard turns it on for new vaults and reveals the key as
+  an `sls-id-v1:<64 hex>` recovery code. Every device of a vault must carry
+  the same key; the milestone tweak check hard-fails (`ID_KEY_MISMATCH`) on a
+  difference, and changing it needs the usual rebuild + fetch.
+  **Adopted for new encrypted vaults** (`vaults.id_derivation_key_enc`): the
+  key is generated at creation, shown once as the ID recovery code next to
+  the passphrase, stored encrypted like the passphrase, and merged into every
+  invite together with `idDerivationVersion: 1` (the decoder rejects a key
+  without its version). Unencrypted vaults, vaults created before this, and
+  adopted databases without a recovery code stay on version 0 (passphrase-
+  derived IDs); `POST /vaults/connect` accepts `idRecoveryCode` for an
+  existing keyed vault. A keyed vault needs plugin ≥ 1.0.33 on every device:
+  older clients ignore the fields and would write legacy IDs, and the remote
+  feature generation in § 3 is what stops them. The invite page and the SPA
+  state the floor per vault (`minimumPluginVersion`).
 - `encryptInternalMetadata` (1.0.33, "Encrypt internal file Properties"):
   extends E2EE to the paths, times, sizes and chunk references of hidden-file
-  and customisation-sync documents. On for new wizard-created vaults; needs
-  `encrypt`, `usePathObfuscation` and `E2EEAlgorithm: "v2"`, which our
-  encrypted template already has. Omitted for now; same ≥ 1.0.33 floor.
+  and customisation-sync documents. Needs `encrypt`, `usePathObfuscation` and
+  `E2EEAlgorithm: "v2"`, which our encrypted template has. **Enabled for new
+  encrypted vaults** (same ≥ 1.0.33 floor); left off for adopted vaults,
+  as upstream does for existing configurations, because turning it on later
+  needs every device updated and a rebuild.
 - `pathNormalizationVersion` (1.0.38, NFC path identity): opt-in, needs a
   rebuild to change, unsupported by P2P and object storage. Omitted.
 

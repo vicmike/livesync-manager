@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
-import { encryptSecret } from '../crypto/index.js';
+import { decryptSecret, encryptSecret } from '../crypto/index.js';
 import type { AppDatabase } from '../db/index.js';
 import type { DatabaseInfo, SecurityObject } from '../couch/client.js';
 import { recordEvent } from './events.js';
@@ -89,6 +89,8 @@ export interface Vault {
   couchDbName: string;
   status: 'active' | 'archived' | 'deleting';
   encrypted: boolean;
+  /** Uses an independent ID key (plugin 1.0.33+ on every device) rather than legacy IDs. */
+  idDerivation: boolean;
   locked: boolean;
   createdAt: string;
   archivedAt: string | null;
@@ -101,6 +103,7 @@ interface VaultRow {
   couch_db_name: string;
   status: Vault['status'];
   encrypted: number;
+  id_derivation_key_enc: Buffer | null;
   locked: number;
   created_at: string;
   archived_at: string | null;
@@ -114,14 +117,26 @@ function toVault(row: VaultRow): Vault {
     couchDbName: row.couch_db_name,
     status: row.status,
     encrypted: row.encrypted === 1,
+    idDerivation: (row.id_derivation_key_enc?.length ?? 0) > 0,
     locked: row.locked === 1,
     createdAt: row.created_at,
     archivedAt: row.archived_at,
   };
 }
 
-/** Per-vault settings template; unencrypted vaults sync in plaintext. */
-export function settingsTemplate(encrypted: boolean): Record<string, unknown> {
+/**
+ * Per-vault settings template; unencrypted vaults sync in plaintext.
+ * `idDerivation` adds the plugin 1.0.33+ independent-ID-derivation marker
+ * (the key itself is merged in when an invite is minted, like the
+ * passphrase). `encryptInternalMetadata` is the 1.0.33+ "Encrypt internal
+ * file Properties" option; it only takes effect with E2EE v2 plus path
+ * obfuscation, which the encrypted template already has
+ * (LIVESYNC_INTEGRATION.md § 1).
+ */
+export function settingsTemplate(
+  encrypted: boolean,
+  options: { idDerivation?: boolean; encryptInternalMetadata?: boolean } = {},
+): Record<string, unknown> {
   return {
     ...LIVESYNC_SETTINGS_TEMPLATE,
     encrypt: encrypted,
@@ -129,7 +144,58 @@ export function settingsTemplate(encrypted: boolean): Record<string, unknown> {
     // E2EE algorithm only applies when encryption is on; v2 (HKDF) is the
     // plugin default and what all current devices use.
     ...(encrypted ? { E2EEAlgorithm: 'v2' } : {}),
+    ...(encrypted && options.idDerivation ? { idDerivationVersion: 1 } : {}),
+    ...(encrypted && options.encryptInternalMetadata ? { encryptInternalMetadata: true } : {}),
   };
+}
+
+// Independent ID derivation (plugin 1.0.33+). The key is 32 random bytes as
+// 64 lowercase hex characters, exactly what commonlib's `configuredIdKey`
+// accepts; the plugin reveals and imports it as an "ID recovery code" with
+// the `sls-id-v1:` prefix, so we use the same wording and format. It is a
+// vault secret alongside the E2EE passphrase, never the same thing as it,
+// and never logged (SECURITY.md).
+export const ID_RECOVERY_CODE_PREFIX = 'sls-id-v1:';
+const ID_RECOVERY_CODE_PATTERN = /^sls-id-v1:([0-9a-f]{64})$/;
+
+export function generateIdDerivationKey(): string {
+  return randomBytes(32).toString('hex');
+}
+
+export function formatIdRecoveryCode(key: string): string {
+  return `${ID_RECOVERY_CODE_PREFIX}${key}`;
+}
+
+/** Parses an ID recovery code as shown by the plugin or by this app. */
+export function parseIdRecoveryCode(code: string): string {
+  const match = ID_RECOVERY_CODE_PATTERN.exec(code.trim());
+  if (!match) {
+    throw new VaultError(
+      'The ID recovery code must be "sls-id-v1:" followed by 64 hex characters. In the ' +
+        'plugin, reveal it under the E2EE settings of a device that already syncs this vault; ' +
+        'leave the field empty if the vault does not use an independent ID key.',
+      400,
+    );
+  }
+  return match[1]!;
+}
+
+/** The vault's independent ID derivation key, or undefined for legacy IDs. */
+export function getVaultIdDerivationKey(
+  db: AppDatabase,
+  masterKey: Buffer,
+  vaultId: string,
+): string | undefined {
+  const row = db.prepare('SELECT id_derivation_key_enc FROM vaults WHERE id = ?').get(vaultId) as
+    { id_derivation_key_enc: Buffer | null } | undefined;
+  if (!row?.id_derivation_key_enc || row.id_derivation_key_enc.length === 0) {
+    return undefined;
+  }
+  return decryptSecret(masterKey, row.id_derivation_key_enc, {
+    table: 'vaults',
+    column: 'id_derivation_key_enc',
+    rowId: vaultId,
+  });
 }
 
 export class VaultError extends Error {
@@ -186,7 +252,7 @@ export async function createVault(
   deps: VaultServiceDeps,
   name: string,
   options: { encrypted?: boolean } = {},
-): Promise<Vault & { e2eePassphrase?: string }> {
+): Promise<Vault & { e2eePassphrase?: string; idRecoveryCode?: string }> {
   const trimmed = validateName(name);
   const encrypted = options.encrypted ?? true;
   const slug = slugify(trimmed);
@@ -206,6 +272,10 @@ export async function createVault(
   // ~192 bits, URL-safe. Shown once at creation; the admin must store it in
   // a password manager (SECURITY.md; losing it means losing note access).
   const e2eePassphrase = encrypted ? randomBytes(24).toString('base64url') : undefined;
+  // New encrypted vaults use independent ID derivation and encrypted internal
+  // metadata, as the plugin's own wizard does since 1.0.33. The key is shown
+  // once as a recovery code, next to the passphrase.
+  const idDerivationKey = encrypted ? generateIdDerivationKey() : undefined;
   const id = uuidv7();
   const now = new Date().toISOString();
 
@@ -217,9 +287,9 @@ export async function createVault(
     });
     deps.db
       .prepare(
-        `INSERT INTO vaults (id, name, slug, couch_db_name, e2ee_passphrase_enc, settings_json,
-                             status, encrypted, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+        `INSERT INTO vaults (id, name, slug, couch_db_name, e2ee_passphrase_enc,
+                             id_derivation_key_enc, settings_json, status, encrypted, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
       )
       .run(
         id,
@@ -233,7 +303,19 @@ export async function createVault(
               rowId: id,
             })
           : Buffer.alloc(0),
-        JSON.stringify(settingsTemplate(encrypted)),
+        idDerivationKey !== undefined
+          ? encryptSecret(deps.masterKey, idDerivationKey, {
+              table: 'vaults',
+              column: 'id_derivation_key_enc',
+              rowId: id,
+            })
+          : null,
+        JSON.stringify(
+          settingsTemplate(encrypted, {
+            idDerivation: idDerivationKey !== undefined,
+            encryptInternalMetadata: encrypted,
+          }),
+        ),
         encrypted ? 1 : 0,
         now,
       );
@@ -250,7 +332,11 @@ export async function createVault(
     message: encrypted ? `Created vault ${trimmed}` : `Created vault ${trimmed} (unencrypted)`,
     vaultId: id,
   });
-  return { ...toVault(getVaultRow(deps.db, id)!), ...(e2eePassphrase ? { e2eePassphrase } : {}) };
+  return {
+    ...toVault(getVaultRow(deps.db, id)!),
+    ...(e2eePassphrase ? { e2eePassphrase } : {}),
+    ...(idDerivationKey ? { idRecoveryCode: formatIdRecoveryCode(idDerivationKey) } : {}),
+  };
 }
 
 /**
@@ -268,11 +354,23 @@ export async function adoptVault(
     couchDbName: string;
     encrypted: boolean;
     e2eePassphrase?: string | undefined;
+    /** `sls-id-v1:<hex>` when the existing vault uses an independent ID key (plugin 1.0.33+). */
+    idRecoveryCode?: string | undefined;
   },
 ): Promise<Vault & { docCount: number }> {
   const trimmed = validateName(input.name);
   const slug = slugify(trimmed);
   ensureSlugFree(deps.db, slug);
+  const recoveryCode = input.idRecoveryCode?.trim() || undefined;
+  if (recoveryCode !== undefined && !input.encrypted) {
+    throw new VaultError(
+      'An ID recovery code only applies to encrypted vaults. Mark the database as encrypted ' +
+        'and provide its passphrase, or leave the recovery code empty.',
+      400,
+    );
+  }
+  const idDerivationKey =
+    recoveryCode !== undefined ? parseIdRecoveryCode(recoveryCode) : undefined;
 
   if (
     deps.db.prepare('SELECT id FROM vaults WHERE couch_db_name = ?').get(input.couchDbName) !==
@@ -301,9 +399,9 @@ export async function adoptVault(
   const id = uuidv7();
   deps.db
     .prepare(
-      `INSERT INTO vaults (id, name, slug, couch_db_name, e2ee_passphrase_enc, settings_json,
-                           status, encrypted, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+      `INSERT INTO vaults (id, name, slug, couch_db_name, e2ee_passphrase_enc,
+                           id_derivation_key_enc, settings_json, status, encrypted, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
     )
     .run(
       id,
@@ -317,7 +415,19 @@ export async function adoptVault(
             rowId: id,
           })
         : Buffer.alloc(0),
-      JSON.stringify(settingsTemplate(input.encrypted)),
+      idDerivationKey !== undefined
+        ? encryptSecret(deps.masterKey, idDerivationKey, {
+            table: 'vaults',
+            column: 'id_derivation_key_enc',
+            rowId: id,
+          })
+        : null,
+      // An existing vault keeps its ID scheme. Encrypted internal metadata
+      // stays off for adopted vaults, as upstream keeps it for existing
+      // configurations: enabling it needs every device updated and a rebuild.
+      JSON.stringify(
+        settingsTemplate(input.encrypted, { idDerivation: idDerivationKey !== undefined }),
+      ),
       input.encrypted ? 1 : 0,
       new Date().toISOString(),
     );

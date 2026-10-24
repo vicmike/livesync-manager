@@ -48,11 +48,11 @@ describe('compatibility with the plugin decoder (livesync-commonlib)', () => {
     expect(decoded).toMatchObject(conf);
   });
 
-  it('the plugin normalises our URI to legacy, passphrase-derived IDs', async () => {
-    // We omit idDerivation*, encryptInternalMetadata and
-    // pathNormalizationVersion on purpose (LIVESYNC_INTEGRATION.md § 1).
-    // The decoder must keep treating omission as "legacy" rather than as an
-    // error, or no device of an existing vault could import an invite.
+  it('the plugin normalises a legacy-vault URI to passphrase-derived IDs', async () => {
+    // Legacy vaults omit idDerivation*, encryptInternalMetadata and
+    // pathNormalizationVersion (LIVESYNC_INTEGRATION.md § 1). The decoder
+    // must keep treating omission as "legacy" rather than as an error, or no
+    // device of an existing vault could import an invite.
     const uri = await encryptSetupUri(conf, 'misty-river-42');
     const decoded = await decodeSettingsFromSetupURI(uri, 'misty-river-42');
     expect(decoded).toMatchObject({
@@ -61,6 +61,35 @@ describe('compatibility with the plugin decoder (livesync-commonlib)', () => {
       encryptInternalMetadata: false,
       pathNormalizationVersion: 0,
     });
+  });
+
+  it('the plugin accepts the independent ID key a new encrypted vault carries', async () => {
+    // What createInvite mints for keyed vaults: version and key together.
+    // The decoder validates the pair (`configuredIdKey`), so this is the
+    // compatibility proof for the 1.0.33+ ID derivation feature.
+    const key = 'ab'.repeat(32);
+    const keyed = {
+      ...conf,
+      idDerivationVersion: 1,
+      idDerivationKey: key,
+      encryptInternalMetadata: true,
+    };
+    const uri = await encryptSetupUri(keyed, 'misty-river-42');
+    expect(uri).not.toContain(key);
+    const decoded = await decodeSettingsFromSetupURI(uri, 'misty-river-42');
+    expect(decoded).toMatchObject({
+      idDerivationVersion: 1,
+      idDerivationKey: key,
+      encryptInternalMetadata: true,
+    });
+  });
+
+  it('the plugin rejects an ID key without its derivation version', async () => {
+    // Why createInvite always sets both fields together: the decoder's
+    // `configuredIdKey` check fails and the import yields no settings at all.
+    const broken = { ...conf, idDerivationKey: 'ab'.repeat(32) };
+    const uri = await encryptSetupUri(broken, 'misty-river-42');
+    expect(await decodeSettingsFromSetupURI(uri, 'misty-river-42')).toBe(false);
   });
 
   it('the plugin decoder rejects our URI under the wrong passphrase', async () => {

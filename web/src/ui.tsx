@@ -114,14 +114,22 @@ export function ConfirmDialog(props: {
 }
 
 /** Shows a freshly minted invite. The passphrase is never retrievable again. */
-export function InviteReveal(props: { deviceName: string; invite: Invite; onClose: () => void }) {
+export function InviteReveal(props: {
+  deviceName: string;
+  invite: Invite;
+  /** Oldest plugin that can import this invite; 1.0.33 for vaults with an independent ID key. */
+  minimumPluginVersion?: string;
+  onClose: () => void;
+}) {
+  const minimum = props.minimumPluginVersion ?? '1.0.13';
   return (
     <div className="overlay">
       <div className="dialog">
         <h2>Invite for {props.deviceName}</h2>
         <p>
           Scan with the new device's camera, or open the link on it. The Obsidian vault on that
-          device must be <strong>empty</strong>. Use Self-hosted LiveSync 1.0.13 or newer.
+          device must be <strong>empty</strong>. Use Self-hosted LiveSync {minimum} or newer
+          {minimum !== '1.0.13' && ' (this vault uses an independent ID key)'}.
         </p>
         <div className="invite-qr" dangerouslySetInnerHTML={{ __html: props.invite.urlQr }} />
         <p className="reveal">
@@ -143,10 +151,12 @@ export function InviteReveal(props: { deviceName: string; invite: Invite; onClos
   );
 }
 
-/** Shows the vault E2EE passphrase exactly once, at creation. */
+/** Shows the vault E2EE passphrase (and ID recovery code) exactly once, at creation. */
 export function PassphraseReveal(props: {
   vaultName: string;
   passphrase: string;
+  /** `sls-id-v1:...`; new encrypted vaults derive document IDs from this key. */
+  idRecoveryCode?: string;
   onClose: () => void;
 }) {
   return (
@@ -159,8 +169,20 @@ export function PassphraseReveal(props: {
           directory) your notes cannot be decrypted.
         </p>
         <p className="reveal passphrase">{props.passphrase}</p>
+        {props.idRecoveryCode && (
+          <>
+            <p>
+              This is the vault's <strong>ID recovery code</strong>, a separate secret from the
+              passphrase. Store both together. Every device of this vault needs it (invites carry
+              it) and Self-hosted LiveSync 1.0.33 or newer.
+            </p>
+            <p className="reveal passphrase">{props.idRecoveryCode}</p>
+          </>
+        )}
         <div className="dialog-buttons">
-          <button onClick={props.onClose}>I stored it</button>
+          <button onClick={props.onClose}>
+            {props.idRecoveryCode ? 'I stored both' : 'I stored it'}
+          </button>
         </div>
       </div>
     </div>

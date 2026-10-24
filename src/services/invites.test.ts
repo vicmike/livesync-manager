@@ -11,7 +11,7 @@ import {
   generateInvitePassphrase,
   type InviteDeps,
 } from './invites.js';
-import { createVault } from './vaults.js';
+import { adoptVault, createVault } from './vaults.js';
 
 async function makeFixture() {
   const db = openDatabase(':memory:');
@@ -87,6 +87,42 @@ describe('createInvite', () => {
     // Removed upstream in 1.0; must not resurface in minted URIs.
     expect(conf).not.toHaveProperty('doNotUseFixedRevisionForChunks');
     expect(conf.passphrase).toBe(vault.e2eePassphrase);
+    // New encrypted vaults use independent ID derivation (plugin 1.0.33+):
+    // the key rides along with every invite, with its version.
+    expect(conf).toMatchObject({
+      idDerivationVersion: 1,
+      idDerivationKey: vault.idRecoveryCode!.slice('sls-id-v1:'.length),
+      encryptInternalMetadata: true,
+    });
+    expect(row.setup_uri_enc.toString('latin1')).not.toContain(conf.idDerivationKey as string);
+    expect(page.minimumPluginVersion).toBe('1.0.33');
+  });
+
+  it('mints legacy URIs for vaults without an ID key', async () => {
+    const db = openDatabase(':memory:');
+    runMigrations(db, defaultMigrationsDir());
+    const masterKey = randomBytes(32);
+    const couch = new FakeCouch();
+    await couch.createDatabase('obsidian');
+    const vault = await adoptVault(
+      { db, couch, masterKey },
+      { name: 'Old', couchDbName: 'obsidian', encrypted: true, e2eePassphrase: 'old-pass' },
+    );
+    const device = insertTestDevice(db, masterKey, vault.id, 'Phone');
+    const deps: InviteDeps = { db, masterKey, config: makeTestConfig() };
+    const invite = await createInvite(deps, {
+      vaultId: vault.id,
+      deviceId: device.id,
+      couchUsername: device.couchUsername,
+      couchPassword: 'pw',
+    });
+    const page = findInvite(deps, tokenFrom(invite.url))!;
+    const conf = await decryptSetupUri(page.setupUri, invite.uriPassphrase);
+    expect(conf.passphrase).toBe('old-pass');
+    expect(conf).not.toHaveProperty('idDerivationKey');
+    expect(conf).not.toHaveProperty('idDerivationVersion');
+    expect(conf).not.toHaveProperty('encryptInternalMetadata');
+    expect(page.minimumPluginVersion).toBe('1.0.13');
   });
 
   it("replaces a device's previous pending invite", async () => {
@@ -173,5 +209,7 @@ describe('unencrypted vaults', () => {
     expect(conf.encrypt).toBe(false);
     expect(conf.usePathObfuscation).toBe(false);
     expect('passphrase' in conf).toBe(false);
+    expect('idDerivationKey' in conf).toBe(false);
+    expect(page.minimumPluginVersion).toBe('1.0.13');
   });
 });

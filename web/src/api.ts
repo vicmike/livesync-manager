@@ -48,6 +48,8 @@ export interface Vault {
   couchDbName: string;
   status: 'active' | 'archived' | 'deleting';
   encrypted: boolean;
+  /** Uses an independent ID key; devices need Self-hosted LiveSync 1.0.33 or newer. */
+  idDerivation: boolean;
   locked: boolean;
   createdAt: string;
   archivedAt: string | null;

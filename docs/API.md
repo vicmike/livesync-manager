@@ -26,9 +26,9 @@ reverse proxy (Authentik/Authelia style). Disabled by default.
 | Method | Path | Notes |
 |---|---|---|
 | GET  | `/vaults` | list (excludes archived unless `?archived=1`) |
-| POST | `/vaults` | `{name, encrypted?=true}` → creates DB, security object, settings template; encrypted vaults get an E2EE passphrase, returned once. Returns vault. |
+| POST | `/vaults` | `{name, encrypted?=true}` → creates DB, security object, settings template; encrypted vaults get an E2EE passphrase and an independent ID key (LiveSync 1.0.33+), returned once as `e2eePassphrase` and `idRecoveryCode` (`sls-id-v1:…`). Returns vault (`idDerivation: true` when keyed). |
 | GET  | `/vaults/adoptable` | unmanaged, non-system CouchDB databases (adoption candidates) |
-| POST | `/vaults/connect` | adopt an existing CouchDB database: `{name, couchDbName, encrypted?, e2eePassphrase?}`. Nothing on the server is modified. Existing `_security` (legacy shared users) stays intact. Whether the db is really LiveSync's is only heuristically checkable (content is obfuscated); adoption verifies existence. |
+| POST | `/vaults/connect` | adopt an existing CouchDB database: `{name, couchDbName, encrypted?, e2eePassphrase?, idRecoveryCode?}`. `idRecoveryCode` is the plugin's `sls-id-v1:` code when the vault already uses an independent ID key; omit it for legacy vaults. Nothing on the server is modified. Existing `_security` (legacy shared users) stays intact. Whether the db is really LiveSync's is only heuristically checkable (content is obfuscated); adoption verifies existence. |
 | GET  | `/vaults/:id` | detail incl. health summary, device count, last backup, `legacyMembers` (unmanaged `_security` names) |
 | PATCH| `/vaults/:id` | rename, archive/unarchive |
 | DELETE | `/vaults/:id` | destructive (see below) |

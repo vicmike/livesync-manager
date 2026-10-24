@@ -24,6 +24,8 @@ const adoptSchema = z.object({
   couchDbName: z.string(),
   encrypted: z.boolean().default(true),
   e2eePassphrase: z.string().optional(),
+  /** `sls-id-v1:<hex>` from the plugin's E2EE settings when the vault uses an independent ID key. */
+  idRecoveryCode: z.string().optional(),
 });
 const removeMemberSchema = z.object({ name: z.string(), confirmToken: z.string() });
 const patchSchema = z
