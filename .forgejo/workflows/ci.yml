@@ -43,9 +43,22 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
-        with:
-          version: v3.16.4
+      # Install helm directly from get.helm.sh (checksum-verified) instead of
+      # azure/setup-helm: that action resolves releases through the GitHub
+      # API, which is not available to a Forgejo runner. The GitHub mirror of
+      # this workflow (.github/workflows/ci.yml) keeps the action.
+      - name: Install helm
+        run: |
+          set -eu
+          VERSION=v3.16.4
+          curl -fsSLO "https://get.helm.sh/helm-${VERSION}-linux-amd64.tar.gz"
+          curl -fsSLO "https://get.helm.sh/helm-${VERSION}-linux-amd64.tar.gz.sha256sum"
+          sha256sum -c "helm-${VERSION}-linux-amd64.tar.gz.sha256sum"
+          tar -xzf "helm-${VERSION}-linux-amd64.tar.gz"
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 linux-amd64/helm "$HOME/.local/bin/helm"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/helm" version
       - name: Lint and render the Helm chart
         run: |
           helm lint charts/livesync-manager --strict --values charts/livesync-manager/ci-values.yaml
