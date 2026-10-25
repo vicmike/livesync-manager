@@ -75,7 +75,9 @@ jobs:
             --values charts/livesync-manager/ci-values.yaml >/dev/null
       - name: Package the Helm chart
         run: helm package charts/livesync-manager --destination dist/chart
-      - uses: actions/upload-artifact@v4
+      # v3: Forgejo runners implement the v3 artifact API only; v4 needs
+      # GitHub's. The GitHub mirror of this workflow keeps v4.
+      - uses: actions/upload-artifact@v3
         with:
           name: livesync-manager-chart
           path: dist/chart/*.tgz
