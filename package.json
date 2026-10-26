@@ -1,6 +1,6 @@
 {
   "name": "livesync-manager",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "description": "Self-hosted management app for Obsidian Self-hosted LiveSync + CouchDB",
   "license": "MIT",
