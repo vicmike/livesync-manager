@@ -7,11 +7,10 @@ under `reference/`) and `@vrtmrz/livesync-commonlib` on npm (the plugin's own
 shared library, published since 1.0). Verify against upstream when bumping
 supported plugin versions and update the line below.
 
-**Reviewed against: plugin 1.0.39, `@vrtmrz/livesync-commonlib` 0.1.44 (the
-version 1.0.39 ships; 0.2.0, published 2026-10-23 for the next plugin
-release, has an identical setup-URI codec and remote-version check),
-`octagonal-wheels` 0.1.55 — 2026-10-23. A real-device onboarding smoke test
-remains a release gate.**
+**Reviewed against: plugin 1.0.40, `@vrtmrz/livesync-commonlib` 0.2.0 (the
+version 1.0.40 ships; its setup-URI codec and remote-version check are
+identical to 0.1.44), `octagonal-wheels` 0.1.55 — 2026-10-26. A real-device
+onboarding smoke test remains a release gate.**
 
 ## 1. Setup URI format
 
@@ -77,7 +76,7 @@ the behavior flags upstream's `utils/setup/generate_setup_uri.ts` sets):
   "syncMaxSizeInMB": 50,
   "chunkSplitterVersion": "v3-rabin-karp",
   "usePluginSyncV2": true,
-  "customChunkSize": 60,
+  "customChunkSize": 0,
   "sendChunksBulkMaxSize": 1,
   "concurrencyOfReadChunksOnline": 30,
   "minimumIntervalOfReadChunksOnline": 25,
@@ -125,11 +124,12 @@ lacks them, so omission means explicit "legacy", not "unspecified"
 - `pathNormalizationVersion` (1.0.38, NFC path identity): opt-in, needs a
   rebuild to change, unsupported by P2P and object storage. Omitted.
 
-`customChunkSize: 60` mirrors `PREFERRED_SETTING_SELF_HOSTED` in commonlib
-≤ 0.1.44 (plugin ≤ 1.0.39). commonlib 0.2.0 moves it to 0 and withdraws the
-Doctor recommendation; it is a "compatible, lossy" tweak that clients
-auto-align, so existing vaults are unaffected either way. Revisit when the
-plugin release that ships commonlib 0.2.0 is out.
+`customChunkSize: 0` follows plugin 1.0.40 (commonlib 0.2.0), which made 0
+the recommendation for every remote type with the V3 Rabin–Karp splitter and
+stopped Setting Doctor from recommending 60 for self-hosted vaults. Vaults
+created before app 0.4.2 keep the 60 stored in their template; it is a
+"compatible, lossy" tweak, joining devices adopt the vault's stored value, and
+upstream keeps existing explicit values, so nothing needs to change for them.
 
 Store this as the per-vault `settings_json` template at vault creation; per-
 device invites override only the credential fields. All devices of a vault
@@ -341,6 +341,26 @@ Last-seen strategy, in order of preference:
    that device. Unmapped nodes are still worth showing at vault level.
 3. CouchDB `_session`/access observations or proxy access logs, if ever
    configured (optional).
+
+LiveSync never removes a node from this document: every reinstall, wiped
+vault or retired device stays listed with its last version. A real vault after
+four months held twelve nodes, two of them in use. The manager therefore marks
+nodes without a connection for 30 days as *stale*, hides them by default and
+leaves them out of the outdated-plugin warning. Plugin 1.0.40's **Review
+devices** dialog (command palette, or Remote Configuration) lists the same
+records with "this device" first, which is the easiest way to tell which node
+is which, and can **forget** retired ones without touching files or
+credentials.
+
+`locked: true` is LiveSync's own lock, set by a rebuild ("Overwrite Server
+Data"). Devices in `accepted_nodes` keep syncing; any other node (new,
+reinstalled, set up again) stops at the plugin's **"Locked"** dialog before it
+registers, so it never appears here. Its options, from the 1.0.40 catalog
+(`Replicator.Dialogue.Locked.*`): **"Reset Synchronisation on This Device"**
+(the right answer for a joining device), *"Unlock the remote database"* (only
+on a device known to be fully in sync), *"Cancel for reconfirmation"*. The
+vault page shows a notice whenever the lock is set. It is independent of this
+app's own vault lock, which edits `_security`.
 
 Present as "last activity (approximate)". Do not build features that require
 this to be exact, and never write to this document: a conflicting write

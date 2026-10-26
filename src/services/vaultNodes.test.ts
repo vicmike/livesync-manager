@@ -8,6 +8,8 @@ import { addDevice, listDevices, markDeviceConnected, type DeviceServiceDeps } f
 import {
   compareVersions,
   isOutdatedPlugin,
+  isStaleNode,
+  STALE_AFTER_DAYS,
   MILESTONE_DOC_ID,
   MIN_RECOMMENDED_PLUGIN_VERSION,
   projectMilestone,
@@ -202,6 +204,25 @@ describe('refreshVaultNodes', () => {
     expect(result.milestone).toBe('unavailable');
     expect(result.error).toContain('503');
     expect(result.nodes).toHaveLength(1);
+  });
+
+  it('marks clients stale after STALE_AFTER_DAYS without a connection', async () => {
+    const { db, couch, vault, setMilestone } = await fixture();
+    const now = new Date(T0 + (STALE_AFTER_DAYS + 1) * 24 * 60 * 60 * 1000);
+    setMilestone(
+      milestone({
+        old: nodeInfo({ last_connected: T0 }),
+        recent: nodeInfo({ last_connected: now.getTime() - 60_000 }),
+        never: nodeInfo({ last_connected: 0 }),
+      }),
+    );
+    const result = await refreshVaultNodes({ db, couch }, vault.id, now);
+    const byId = (id: string) => result.nodes.find((n) => n.nodeId === id)!;
+    expect(byId('old').stale).toBe(true);
+    expect(byId('recent').stale).toBe(false);
+    expect(byId('never').stale).toBe(true);
+    expect(isStaleNode(new Date(now.getTime() - 1000).toISOString(), now)).toBe(false);
+    expect(isStaleNode(null, now)).toBe(true);
   });
 
   it('flags outdated plugins', async () => {

@@ -66,7 +66,10 @@ export const LIVESYNC_SETTINGS_TEMPLATE = {
   syncMaxSizeInMB: 50,
   chunkSplitterVersion: 'v3-rabin-karp',
   usePluginSyncV2: true,
-  customChunkSize: 60,
+  // 0 since plugin 1.0.40 (commonlib 0.2.0): the shared recommendation for
+  // every remote type with the V3 Rabin-Karp splitter. New vaults only; each
+  // vault keeps the value stored at creation (LIVESYNC_INTEGRATION.md § 1).
+  customChunkSize: 0,
   sendChunksBulkMaxSize: 1,
   concurrencyOfReadChunksOnline: 30,
   minimumIntervalOfReadChunksOnline: 25,

@@ -148,8 +148,11 @@ export async function getVaultHealth(deps: VaultHealthDeps, vaultId: string): Pr
       milestone: nodes.milestone,
       total: nodes.nodes.length,
       minRecommendedPluginVersion: nodes.minRecommendedPluginVersion,
+      // Stale clients (not connected for STALE_AFTER_DAYS) are retired
+      // installs LiveSync never forgets; warning about them buries the
+      // devices that are actually in use.
       outdated: nodes.nodes
-        .filter((n) => n.outdated)
+        .filter((n) => n.outdated && !n.stale)
         .map((n) => ({ nodeId: n.nodeId, label: n.label, pluginVersion: n.pluginVersion })),
     };
     if (nodes.error !== undefined) {

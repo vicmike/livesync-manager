@@ -1,7 +1,7 @@
 # reference/
 
 Vendored verbatim from [vrtmrz/obsidian-livesync](https://github.com/vrtmrz/obsidian-livesync)
-(MIT licensed, © vorotamoroz), as of plugin 1.0.39 (2026-10-20):
+(MIT licensed, © vorotamoroz), as of plugin 1.0.39 (2026-10-20); both files are unchanged in 1.0.40:
 
 - `generate_setup_uri.ts` (`utils/setup/generate_setup_uri.ts`): the canonical
   settings payload behind `obsidian://setuplivesync` URIs. Since plugin 1.0 it

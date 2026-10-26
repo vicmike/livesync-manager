@@ -23,6 +23,22 @@ export { MIN_RECOMMENDED_PLUGIN_VERSION };
  */
 const AUTO_LINK_WINDOW_MS = 60 * 60 * 1000;
 
+/**
+ * LiveSync never removes a client from its milestone document: reinstalls,
+ * retired devices and wiped vaults stay listed forever (plugin 1.0.40's
+ * "Review devices" can forget them by hand). A client that has not connected
+ * for this long is shown as stale and left out of the outdated-plugin
+ * warning, so the warning names devices that are actually in use.
+ */
+export const STALE_AFTER_DAYS = 30;
+const STALE_AFTER_MS = STALE_AFTER_DAYS * 24 * 60 * 60 * 1000;
+
+export function isStaleNode(lastConnected: string | null, now: Date = new Date()): boolean {
+  if (lastConnected === null) return true;
+  const at = Date.parse(lastConnected);
+  return Number.isNaN(at) || now.getTime() - at > STALE_AFTER_MS;
+}
+
 export interface ProjectedNode {
   nodeId: string;
   accepted: boolean;
@@ -49,6 +65,8 @@ export interface VaultNode extends ProjectedNode {
   firstSeen: string;
   lastObserved: string;
   outdated: boolean;
+  /** Not connected for STALE_AFTER_DAYS (or never): likely a retired install. */
+  stale: boolean;
   /** The managed device this client is linked to, if any. */
   device: { id: string; name: string } | null;
 }
@@ -194,7 +212,7 @@ interface NodeRow {
   device_label: string | null;
 }
 
-function toNode(row: NodeRow): VaultNode {
+function toNode(row: NodeRow, now: Date): VaultNode {
   return {
     vaultId: row.vault_id,
     nodeId: row.node_id,
@@ -209,12 +227,17 @@ function toNode(row: NodeRow): VaultNode {
     firstSeen: row.first_seen,
     lastObserved: row.last_observed,
     outdated: isOutdatedPlugin(row.plugin_version),
+    stale: isStaleNode(row.last_connected, now),
     device: row.device_id ? { id: row.device_id, name: row.device_label ?? '' } : null,
   };
 }
 
 /** Stored observations for a vault, most recently connected first. */
-export function listVaultNodes(db: AppDatabase, vaultId: string): VaultNode[] {
+export function listVaultNodes(
+  db: AppDatabase,
+  vaultId: string,
+  now: Date = new Date(),
+): VaultNode[] {
   const rows = db
     .prepare(
       `SELECT n.*, d.id AS device_id, d.name AS device_label
@@ -224,7 +247,7 @@ export function listVaultNodes(db: AppDatabase, vaultId: string): VaultNode[] {
        ORDER BY n.last_connected IS NULL, n.last_connected DESC, n.node_id`,
     )
     .all(vaultId) as NodeRow[];
-  return rows.map(toNode);
+  return rows.map((row) => toNode(row, now));
 }
 
 function upsertNodes(db: AppDatabase, vaultId: string, nodes: ProjectedNode[], now: string): void {
@@ -382,7 +405,7 @@ export async function refreshVaultNodes(
     locked: projected.locked,
     ...(error !== undefined ? { error } : {}),
     minRecommendedPluginVersion: MIN_RECOMMENDED_PLUGIN_VERSION,
-    nodes: listVaultNodes(deps.db, vaultId),
+    nodes: listVaultNodes(deps.db, vaultId, now),
   };
 }
 

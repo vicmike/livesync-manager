@@ -66,8 +66,12 @@ describe('vault health', () => {
       type: 'milestoneinfo',
       accepted_nodes: ['old-node', 'new-node'],
       node_info: {
-        'old-node': { device_name: 'Old Laptop', plugin_version: '1.0.30', last_connected: 1 },
-        'new-node': { device_name: 'Phone', plugin_version: '1.0.39', last_connected: 2 },
+        'old-node': {
+          device_name: 'Old Laptop',
+          plugin_version: '1.0.30',
+          last_connected: Date.now() - 60_000,
+        },
+        'new-node': { device_name: 'Phone', plugin_version: '1.0.39', last_connected: Date.now() },
       },
     });
     const health = await getVaultHealth({ db, couch }, vault.id);
@@ -81,6 +85,27 @@ describe('vault health', () => {
     expect(warning).toContain(`older than ${MIN_RECOMMENDED_PLUGIN_VERSION}`);
     expect(warning).toContain('Update Self-hosted LiveSync on that device');
     expect(warning).not.toContain('Phone');
+  });
+
+  it('leaves stale clients out of the outdated warning', async () => {
+    // LiveSync never forgets an install; a 0.25.x record from months ago is
+    // a retired device, not something to update.
+    const { db, couch, vault } = await fixture();
+    couch.databases.get(vault.couchDbName)!.localDocs.set(MILESTONE_DOC_ID, {
+      type: 'milestoneinfo',
+      accepted_nodes: ['retired', 'current'],
+      node_info: {
+        retired: {
+          device_name: 'Retired Laptop',
+          plugin_version: '0.25.80',
+          last_connected: Date.now() - 90 * 24 * 60 * 60 * 1000,
+        },
+        current: { device_name: 'Phone', plugin_version: '1.0.40', last_connected: Date.now() },
+      },
+    });
+    const health = await getVaultHealth({ db, couch }, vault.id);
+    expect(health.clients).toMatchObject({ total: 2, outdated: [] });
+    expect(health.warnings.join('\n')).not.toContain('Retired Laptop');
   });
 
   it('reports no clients when none has connected yet', async () => {

@@ -139,6 +139,8 @@ export interface VaultNode {
   firstSeen: string;
   lastObserved: string;
   outdated: boolean;
+  /** Not connected for 30 days (or never): likely a retired install. */
+  stale: boolean;
   device: { id: string; name: string } | null;
 }
 

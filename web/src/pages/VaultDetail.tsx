@@ -230,6 +230,7 @@ function Clients(props: { nodes: VaultNodes | null; devices: Device[]; onChange:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<Record<string, string>>({});
+  const [showStale, setShowStale] = useState(false);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -263,9 +264,24 @@ function Clients(props: { nodes: VaultNodes | null; devices: Device[]; onChange:
     (d) => d.status !== 'revoked' && !props.nodes?.nodes.some((n) => n.device?.id === d.id),
   );
   const nodes = props.nodes;
+  // LiveSync never forgets an install, so old records pile up; keep linked
+  // ones visible even when stale so a link is never hidden.
+  const staleCount = nodes?.nodes.filter((n) => n.stale && !n.device).length ?? 0;
+  const shown = nodes?.nodes.filter((n) => showStale || !n.stale || n.device) ?? [];
 
   return (
     <Card title="LiveSync clients">
+      {nodes?.locked && (
+        <div className="warnings">
+          <p>
+            LiveSync has marked this vault's remote as <strong>locked</strong>, which it does after
+            a rebuild. Devices it already accepted keep syncing. Any other device (new, reinstalled,
+            or set up again) stops at a <em>Locked</em> dialog: choose{' '}
+            <strong>Reset Synchronisation on This Device</strong> there. Choose{' '}
+            <em>Unlock the remote database</em> only on a device you know is fully in sync.
+          </p>
+        </div>
+      )}
       {!nodes ? (
         <p className="muted">Loading…</p>
       ) : nodes.milestone === 'absent' && nodes.nodes.length === 0 ? (
@@ -286,7 +302,7 @@ function Clients(props: { nodes: VaultNodes | null; devices: Device[]; onChange:
             </tr>
           </thead>
           <tbody>
-            {nodes.nodes.map((n) => (
+            {shown.map((n) => (
               <tr key={n.nodeId}>
                 <td>
                   {n.label}
@@ -308,7 +324,15 @@ function Clients(props: { nodes: VaultNodes | null; devices: Device[]; onChange:
                   )}
                 </td>
                 <td className="muted">{n.platform ?? '-'}</td>
-                <td className="muted">{timeAgo(n.lastConnected)}</td>
+                <td className="muted">
+                  {timeAgo(n.lastConnected)}
+                  {n.stale && (
+                    <>
+                      {' '}
+                      <Badge kind="muted">stale</Badge>
+                    </>
+                  )}
+                </td>
                 <td>
                   {n.device ? (
                     n.device.name
@@ -349,6 +373,17 @@ function Clients(props: { nodes: VaultNodes | null; devices: Device[]; onChange:
             ))}
           </tbody>
         </table>
+      )}
+      {staleCount > 0 && (
+        <p>
+          <button className="link" onClick={() => setShowStale((v) => !v)}>
+            {showStale ? 'hide' : 'show'} {staleCount} stale client{staleCount > 1 ? 's' : ''}
+          </button>{' '}
+          <span className="muted">
+            (not connected for 30 days; LiveSync keeps records of retired installs until you choose{' '}
+            <em>Review devices</em> in the plugin and forget them)
+          </span>
+        </p>
       )}
       {nodes?.error && <ErrorLine error={`Could not refresh the client list: ${nodes.error}`} />}
       <p className="muted">
